@@ -1,0 +1,56 @@
+# =====================================
+# 🌐 通用忽略规则（适用于 Win / Mac / Linux）
+# =====================================
+
+# 👉 构建输出
+cmake-build-*/
+build/
+
+# 👉 编译产物
+*.o
+*.obj
+*.so
+*.dll
+*.a
+*.lib
+*.out
+*.exe
+
+# 👉 调试符号
+*.pdb        # Windows
+*.dSYM/      # macOS
+*.lprof      # Linux GCOV/LLVM profiling
+
+# 👉 编辑器和系统临时文件
+*~
+*.swp
+*.swo
+*.tmp
+.DS_Store    # macOS Finder
+Thumbs.db    # Windows
+desktop.ini  # Windows
+
+# 👉 CLion / JetBrains 配置
+.idea/
+!.idea/codeStyles/
+!.idea/vcs.xml
+!.idea/.name
+*.iml
+
+# 👉 CMake 自动生成文件
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+install_manifest.txt
+
+# 👉 日志文件
+*.log
+
+# 👉 Conan 包管理器（如使用）
+.conan/
+
+# 👉 GoogleTest / CTest
+Testing/
+CTestTestfile.cmake
+DartConfiguration.tcl
