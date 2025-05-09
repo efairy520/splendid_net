@@ -6,7 +6,7 @@ int main (void) {
 
     xnet_init();
 
-    printf("xnet running\n");
+    printf("xnet running......\n");
 
     while (1) {
         xnet_poll();
