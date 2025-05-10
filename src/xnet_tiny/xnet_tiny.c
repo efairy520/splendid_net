@@ -18,6 +18,11 @@
 static uint8_t netif_mac[XNET_MAC_ADDR_SIZE];
 
 /**
+ * ARP表
+ */
+static xarp_entry_t arp_entry;
+
+/**
  * 发送缓冲区
  * transmit packet
  */
@@ -153,11 +158,16 @@ static void ethernet_poll(void) {
     }
 }
 
+static void xarp_init(void) {
+    arp_entry.state = XARP_ENTRY_FREE;
+}
+
 /**
  * 协议栈的初始化
  */
 void xnet_init(void) {
     ethernet_init();
+    xarp_init();
 }
 
 /**

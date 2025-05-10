@@ -17,10 +17,12 @@
 #pragma pack(1)
 
 /**
- * MAC地址长度，6个字节，48位二进制数
- * 通常转换成12位的进制数
- * 1101 0111 0011 1001 0101 1000 1111 0000 1010 1010 1111 0000
- * D7-39-58-F0-AA-F0
+ * IP地址长度
+ */
+#define XNET_IPV4_ADDR_SIZE             4
+
+/**
+ * MAC地址长度
  */
 #define XNET_MAC_ADDR_SIZE              6
 
@@ -92,6 +94,30 @@ typedef enum _xnet_protocol_t {
     XNET_PROTOCOL_ARP = 0x0806, // ARP协议
     XNET_PROTOCOL_IP = 0x0800, // IP协议
 } xnet_protocol_t;
+
+/**
+ * IP地址，使用共用体，节省空间
+ */
+typedef union _xipaddr_t {
+    uint8_t array[XNET_IPV4_ADDR_SIZE]; // 以数据形式存储的ip
+    uint32_t addr; // 32位的ip地址
+} xipaddr_t;
+
+/**
+ * ARP表项空闲
+ */
+#define XARP_ENTRY_FREE		        0
+
+/**
+ * ARP表项
+ */
+typedef struct _xarp_entry_t {
+    xipaddr_t ipaddr; // ip地址
+    uint8_t macaddr[XNET_MAC_ADDR_SIZE]; // mac地址
+    uint8_t state; // 状态位
+    uint16_t tmo; // 当前超时
+    uint8_t retry_cnt; // 当前重试次数
+} xarp_entry_t;
 
 /**
  * 协议栈的初始化
