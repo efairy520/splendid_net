@@ -58,7 +58,7 @@ xnet_err_t ethernet_out_to(xnet_protocol_t protocol, const uint8_t* mac_addr, xn
 
 /**
  * 构造一个ARP数据包，并通过以太网广播
- * @param target_ipaddr 请求的IP地址
+ * @param target_ipaddr 传入目标IP，或者传自己的IP
  * @return 请求结果
  */
 xnet_err_t xarp_make_request(const xip4_addr_t *target_ipaddr) {
@@ -74,10 +74,10 @@ xnet_err_t xarp_make_request(const xip4_addr_t *target_ipaddr) {
     arp_packet->protocol_len = XNET_IPV4_ADDR_SIZE;
     arp_packet->opcode = swap_order16(XARP_REQUEST);
     memcpy(arp_packet->sender_mac, netif_mac, XNET_MAC_ADDR_SIZE);
-    memcpy(arp_packet->sender_ip, netif_ipaddr.bytes, XNET_IPV4_ADDR_SIZE);
+    memcpy(arp_packet->sender_ip, netif_ipaddr.array, XNET_IPV4_ADDR_SIZE);
     memset(arp_packet->target_mac, 0, XNET_MAC_ADDR_SIZE);
-    memcpy(arp_packet->target_ip, target_ipaddr->bytes, XNET_IPV4_ADDR_SIZE);
-    // 发送以太网请求
+    memcpy(arp_packet->target_ip, target_ipaddr->array, XNET_IPV4_ADDR_SIZE);
+    // 发送ARP请求，多播
     return ethernet_out_to(XNET_PROTOCOL_ARP, ether_broadcast, xnet_packet);
 }
 
@@ -109,10 +109,11 @@ xnet_err_t xarp_make_response(uint8_t* target_ip, uint8_t* target_mac) {
     arp_packet->hardware_len = XNET_MAC_ADDR_SIZE;
     arp_packet->protocol_len = XNET_IPV4_ADDR_SIZE;
     arp_packet->opcode = swap_order16(XARP_REPLY);
+    memcpy(arp_packet->sender_mac, netif_mac, XNET_MAC_ADDR_SIZE);
+    memcpy(arp_packet->sender_ip, netif_ipaddr.array, XNET_IPV4_ADDR_SIZE);
     memcpy(arp_packet->target_mac, target_mac, XNET_MAC_ADDR_SIZE);
     memcpy(arp_packet->target_ip, target_ip, XNET_IPV4_ADDR_SIZE);
-    memcpy(arp_packet->sender_mac, netif_mac, XNET_MAC_ADDR_SIZE);
-    memcpy(arp_packet->sender_ip, netif_ipaddr.bytes, XNET_IPV4_ADDR_SIZE);
+    // 发送ARP响应，单播
     return ethernet_out_to(XNET_PROTOCOL_ARP, target_mac, packet);
 }
 

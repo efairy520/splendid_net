@@ -73,7 +73,7 @@ void xarp_poll(void) {
  * @param mac_addr 对应的mac地址
  */
 void update_arp_entry(uint8_t *src_ip, uint8_t *mac_addr) {
-    memcpy(arp_entry.ipaddr.bytes, src_ip, XNET_IPV4_ADDR_SIZE);
+    memcpy(arp_entry.ipaddr.array, src_ip, XNET_IPV4_ADDR_SIZE);
     memcpy(arp_entry.macaddr, mac_addr, XNET_MAC_ADDR_SIZE);
     arp_entry.state = XARP_ENTRY_OK;
     arp_entry.ttl = XARP_CFG_ENTRY_OK_TMO;
