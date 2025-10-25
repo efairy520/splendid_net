@@ -123,37 +123,44 @@ xnet_err_t xarp_make_response(uint8_t* target_ip, uint8_t* target_mac) {
  */
 void xarp_in(xnet_packet_t* packet) {
     // 如果小于，说明数据错误，直接忽略这个arp请求
-    if (packet->data_length >= sizeof(xarp_packet_t)) {
-        xarp_packet_t* arp_packet = (xarp_packet_t*) packet->data_start;
-        uint16_t opcode = swap_order16(arp_packet->opcode);
+    if (packet->data_length < sizeof(xarp_packet_t)) return;
 
-        // 只处理发给自己的请求或响应包，此处不处理无回报的ARP包
-        if (!xipaddr_is_equal_buf(&netif_ipaddr, arp_packet->target_ip)) {
-            return;
-        }
-
-        // 包的合法性检查
-        if ((swap_order16(arp_packet->hardware_type) != XARP_HW_ETHER) ||
-            (arp_packet->hardware_len != XNET_MAC_ADDR_SIZE) ||
-            (swap_order16(arp_packet->protocol_type) != XNET_PROTOCOL_IP) ||
-            (arp_packet->protocol_len != XNET_IPV4_ADDR_SIZE)
-            || ((opcode != XARP_REQUEST) && (opcode != XARP_REPLY))) {
-            return;
-            }
-
-        // 根据操作码进行不同的处理
-        switch (swap_order16(arp_packet->opcode)) {
-            case XARP_REQUEST: // 请求，回送响应
-                // 在对方机器Ping 自己，然后看wireshark，能看到ARP请求和响应
-                // 接下来，很可能对方要与自己通信，所以更新一下
-                update_arp_entry(arp_packet->sender_ip, arp_packet->sender_mac);
-                xarp_make_response(arp_packet->sender_ip, arp_packet->sender_mac);
-                break;
-            case XARP_REPLY: // 响应，更新自己的表
-                update_arp_entry(arp_packet->sender_ip, arp_packet->sender_mac);
-                break;
-        }
+    // 包的合法性检查
+    xarp_packet_t* arp_packet = (xarp_packet_t*) packet->data_start;
+    uint16_t opcode = swap_order16(arp_packet->opcode);
+    if ((swap_order16(arp_packet->hardware_type) != XARP_HW_ETHER) ||
+        (arp_packet->hardware_len != XNET_MAC_ADDR_SIZE) ||
+        (swap_order16(arp_packet->protocol_type) != XNET_PROTOCOL_IP) ||
+        (arp_packet->protocol_len != XNET_IPV4_ADDR_SIZE)
+        || ((opcode != XARP_REQUEST) && (opcode != XARP_REPLY))) {
+        return;
     }
+
+    // 处理无偿ARP
+    if (xipaddr_is_equal_buf(arp_packet->sender_ip, arp_packet->target_ip)) {
+        update_arp_entry(arp_packet->sender_ip, arp_packet->sender_mac);
+        return;
+    }
+
+    // 只处理发给自己的ARP
+    if (!xipaddr_is_equal_buf(netif_ipaddr.array, arp_packet->target_ip)) {
+        return;
+    }
+
+
+    // 根据操作码进行不同的处理
+    switch (swap_order16(arp_packet->opcode)) {
+        case XARP_REQUEST: // 请求，回送响应
+            // 在对方机器Ping 自己，然后看wireshark，能看到ARP请求和响应
+            // 接下来，很可能对方要与自己通信，所以更新一下
+            update_arp_entry(arp_packet->sender_ip, arp_packet->sender_mac);
+            xarp_make_response(arp_packet->sender_ip, arp_packet->sender_mac);
+            break;
+        case XARP_REPLY: // 响应，更新自己的表
+            update_arp_entry(arp_packet->sender_ip, arp_packet->sender_mac);
+            break;
+    }
+
 }
 
 /**

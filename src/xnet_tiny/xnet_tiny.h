@@ -8,7 +8,7 @@
 
 #define XNET_CFG_PACKET_MAX_SIZE        1514                // 收发数据包的最大大小 1500+6+6+2
 #define XNET_CFG_NETIF_IP               {192, 168, 254, 2}  // 协议栈的IP地址
-#define xipaddr_is_equal_buf(addr, buf)      (memcmp((addr)->array, buf, XNET_IPV4_ADDR_SIZE) == 0)   // 相等比较
+#define xipaddr_is_equal_buf(a, b)  (memcmp((a), (b), XNET_IPV4_ADDR_SIZE) == 0)
 #define XNET_IPV4_ADDR_SIZE             4                   // IP地址长度
 #define XNET_MAC_ADDR_SIZE              6                   // MAC地址长度
 
