@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 
+#define swap_order16(v)   ((((v) & 0xFF) << 8) | (((v) >> 8) & 0xFF)) // 大小端转换
 #define XNET_CFG_PACKET_MAX_SIZE        1514                // 收发数据包的最大大小 1500+6+6+2
 #define XNET_CFG_NETIF_IP               {192, 168, 254, 2}  // 协议栈的IP地址
 #define xipaddr_is_equal_buf(a, b)  (memcmp((a), (b), XNET_IPV4_ADDR_SIZE) == 0)
@@ -52,6 +53,7 @@ typedef union _xip4_addr_t {
     uint8_t array[XNET_IPV4_ADDR_SIZE]; // 以字节形式存储的ip
     uint32_t value; // 32位的ip地址
 } xip4_addr_t;
+extern const xip4_addr_t netif_ipaddr; // 协议栈的IP地址
 
 // 协议栈初始化
 void xnet_init(void);

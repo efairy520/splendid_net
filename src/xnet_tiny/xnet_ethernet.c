@@ -3,16 +3,16 @@
 //
 #include "xnet_ethernet.h"
 #include "xnet_arp.h"
+#include "xnet_ip.h"
+
 #include <string.h>
+
 
 #define XARP_HW_ETHER               0x1         // 以太网
 #define XARP_REQUEST                0x1         // ARP请求包
 #define XARP_REPLY                  0x2         // ARP响应包
 
-#define swap_order16(v)   ((((v) & 0xFF) << 8) | (((v) >> 8) & 0xFF)) // 大小端转换
-
 static uint8_t netif_mac[XNET_MAC_ADDR_SIZE]; // 协议栈mac地址,由驱动回写
-static const xip4_addr_t netif_ipaddr = XNET_CFG_NETIF_IP; // 协议栈的IP地址
 static const uint8_t ether_broadcast[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // arp广播，mac专用地址
 
 // 关闭填充字节
@@ -182,6 +182,8 @@ void ethernet_in(xnet_packet_t* packet) {
             xarp_in(packet);
             break;
         case XNET_PROTOCOL_IP: {
+            remove_header(packet, sizeof(xether_hdr_t));
+            xip_in(packet);
             break;
         }
     }

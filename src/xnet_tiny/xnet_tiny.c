@@ -4,10 +4,12 @@
 #include "xnet_tiny.h"
 #include "xnet_ethernet.h"
 #include "xnet_arp.h"
+#include "xnet_ip.h"
 
 #define min(a, b)               ((a) > (b) ? (b) : (a))
 
 static xnet_packet_t tx_packet, rx_packet; // 接收与发送缓冲区
+const xip4_addr_t netif_ipaddr = XNET_CFG_NETIF_IP; // 协议栈的IP地址
 
 /**
  * 为发包添加一个头部
@@ -70,6 +72,7 @@ xnet_packet_t* prepare_packet_for_read(uint16_t size) {
 void xnet_init(void) {
     ethernet_init();
     xarp_init();
+    xip_init();
 }
 
 /**

@@ -3,4 +3,6 @@ add_library(xnet_tiny  ${DIR_HELLO_SRCS}
         xnet_ethernet.c
         xnet_ethernet.h
         xnet_arp.h
-        xnet_arp.c)
+        xnet_arp.c
+        xnet_ip.h
+        xnet_ip.c)
