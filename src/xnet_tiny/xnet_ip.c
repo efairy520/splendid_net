@@ -43,32 +43,32 @@ void xip_init(void) {
 }
 
 void xip_in(xnet_packet_t* packet) {
-    xip_hdr_t* iphdr = (xip_hdr_t*) packet->data_start;
+    xip_hdr_t* ip_hdr = (xip_hdr_t*) packet->data_start;
     uint32_t total_size, header_size;
     uint16_t pre_checksum;
     xip_addr_u src_ip;
 
     // 进行一些必要性的检查：版本号要求
-    if (iphdr->version != XNET_VERSION_IPV4) {
+    if (ip_hdr->version != XNET_VERSION_IPV4) {
         return;
     }
 
     // 长度要求检查
-    header_size = iphdr->hdr_len * 4;
-    total_size = swap_order16(iphdr->total_len);
+    header_size = ip_hdr->hdr_len * 4;
+    total_size = swap_order16(ip_hdr->total_len);
     if ((header_size < sizeof(xip_hdr_t)) || ((total_size < header_size) || (packet->data_length < total_size))) {
         return;
     }
 
     // 校验和要求检查
-    pre_checksum = iphdr->hdr_checksum; //取出原校验和
-    iphdr->hdr_checksum = 0; //校验和本身也会参与运算，先归零
-    if (pre_checksum != checksum16((uint16_t*)iphdr, header_size, 0, 1)) {
+    pre_checksum = ip_hdr->hdr_checksum; //取出原校验和
+    ip_hdr->hdr_checksum = 0; //校验和本身也会参与运算，先归零
+    if (pre_checksum != checksum16((uint16_t*)ip_hdr, header_size, 0, 1)) {
         return;
     }
 
     // 只处理目标IP为自己的数据包，其它广播之类的IP全部丢掉
-    if (!xipaddr_is_equal_buf(xnet_local_ip.array, iphdr->dest_ip)) {
+    if (!xipaddr_is_equal_buf(xnet_local_ip.array, ip_hdr->dest_ip)) {
         return;
     }
 
@@ -90,34 +90,41 @@ void xip_in(xnet_packet_t* packet) {
  * @return 发送结果
  */
 static xnet_status_t resolve_and_send(xip_addr_u* dest_ip, xnet_packet_t* packet) {
-    xnet_status_t err;
+    xnet_status_t status;
     uint8_t* mac_addr;
 
-    if ((err = xarp_resolve(dest_ip, &mac_addr) == XNET_OK)) {
+    if ((status = xarp_resolve(dest_ip, &mac_addr) == XNET_OK)) {
         return ethernet_out_to(XNET_PROTOCOL_IP, mac_addr, packet);
     }
-    return err;
+    return status;
 }
 
-xnet_status_t xip_out(xnet_protocol_t protocol, xip_addr_u* dest_ip, xnet_packet_t * packet) {
+/**
+ * 发送一个 ip 包
+ * @param protocol
+ * @param dest_ip
+ * @param packet
+ * @return
+ */
+xnet_status_t xip_out(xnet_protocol_t protocol, xip_addr_u* dest_ip, xnet_packet_t* packet) {
     static uint32_t ip_packet_id = 0;
-    xip_hdr_t * iphdr;
-
+    xip_hdr_t* ip_hdr;
+    // 添加ip头部
     add_header(packet, sizeof(xip_hdr_t));
-    iphdr = (xip_hdr_t*)packet->data_start;
-    iphdr->version = XNET_VERSION_IPV4;
-    iphdr->hdr_len = sizeof(xip_hdr_t) / 4;
-    iphdr->tos = 0; //不支持，填0
-    iphdr->total_len = swap_order16(packet->data_length);
-    iphdr->id = swap_order16(ip_packet_id);
-    iphdr->flags_fragment = 0; //不支持，填0
-    iphdr->ttl = XNET_IP_DEFAULT_TTL;
-    iphdr->protocol = protocol;
-    memcpy(iphdr->dest_ip, dest_ip->array, XNET_IPV4_ADDR_SIZE);
-    memcpy(iphdr->src_ip, xnet_local_ip.array, XNET_IPV4_ADDR_SIZE);
-    iphdr->hdr_checksum = 0;
-    iphdr->hdr_checksum = checksum16((uint16_t *)iphdr, sizeof(xip_hdr_t), 0, 1);;
+    ip_hdr = (xip_hdr_t*)packet->data_start;
+    ip_hdr->version = XNET_VERSION_IPV4;
+    ip_hdr->hdr_len = sizeof(xip_hdr_t) / 4;
+    ip_hdr->tos = 0; //不支持，填0
+    ip_hdr->total_len = swap_order16(packet->data_length);
+    ip_hdr->id = swap_order16(ip_packet_id);
+    ip_hdr->flags_fragment = 0; //不支持，填0
+    ip_hdr->ttl = XNET_IP_DEFAULT_TTL;
+    ip_hdr->protocol = protocol;
+    memcpy(ip_hdr->dest_ip, dest_ip->array, XNET_IPV4_ADDR_SIZE);
+    memcpy(ip_hdr->src_ip, xnet_local_ip.array, XNET_IPV4_ADDR_SIZE);
+    ip_hdr->hdr_checksum = 0;
+    ip_hdr->hdr_checksum = checksum16((uint16_t*)ip_hdr, sizeof(xip_hdr_t), 0, 1);;
 
-    ip_packet_id++;
+    ip_packet_id++; // packet id 每次自增
     return resolve_and_send(dest_ip, packet);
 }

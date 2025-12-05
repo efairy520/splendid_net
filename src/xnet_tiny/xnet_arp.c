@@ -113,5 +113,5 @@ xnet_status_t xarp_resolve(const xip_addr_u* ipaddr, uint8_t** mac_addr) {
     }
 
     xarp_make_request(ipaddr);
-    return XNET_ERR_PARAM;
+    return XNET_ERR_NONE;
 }

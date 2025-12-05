@@ -18,7 +18,7 @@
 typedef enum _xnet_status_t {
     XNET_OK = 0,
     XNET_ERR_IO = -1,
-    XNET_ERR_PARAM = -2,
+    XNET_ERR_NONE = -2,
 } xnet_status_t;
 
 // 网络数据包
