@@ -61,7 +61,7 @@ xnet_status_t ethernet_out_to(xnet_protocol_t protocol, const uint8_t* target_ma
  * @param target_ipaddr 传入目标IP，或者传自己的IP
  * @return 请求结果
  */
-xnet_status_t xarp_make_request(const xip_addr_u* target_ipaddr) {
+xnet_status_t xarp_make_request(const xip_addr_t* target_ipaddr) {
     // 准备一个发送包
     xarp_packet_t* arp_packet;
     xnet_packet_t* xnet_packet = prepare_packet_for_send(sizeof(xarp_packet_t));
@@ -74,9 +74,9 @@ xnet_status_t xarp_make_request(const xip_addr_u* target_ipaddr) {
     arp_packet->protocol_len = XNET_IPV4_ADDR_SIZE;
     arp_packet->opcode = swap_order16(XARP_REQUEST);
     memcpy(arp_packet->sender_mac, xnet_local_mac, XNET_MAC_ADDR_SIZE);
-    memcpy(arp_packet->sender_ip, xnet_local_ip.array, XNET_IPV4_ADDR_SIZE);
+    memcpy(arp_packet->sender_ip, xnet_local_ip.addr, XNET_IPV4_ADDR_SIZE);
     memset(arp_packet->target_mac, 0, XNET_MAC_ADDR_SIZE);
-    memcpy(arp_packet->target_ip, target_ipaddr->array, XNET_IPV4_ADDR_SIZE);
+    memcpy(arp_packet->target_ip, target_ipaddr->addr, XNET_IPV4_ADDR_SIZE);
     // 发送ARP请求，多播
     return ethernet_out_to(XNET_PROTOCOL_ARP, ether_broadcast_mac, xnet_packet);
 }
@@ -110,7 +110,7 @@ xnet_status_t xarp_make_response(uint8_t* target_ip, uint8_t* target_mac) {
     arp_packet->protocol_len = XNET_IPV4_ADDR_SIZE;
     arp_packet->opcode = swap_order16(XARP_REPLY);
     memcpy(arp_packet->sender_mac, xnet_local_mac, XNET_MAC_ADDR_SIZE);
-    memcpy(arp_packet->sender_ip, xnet_local_ip.array, XNET_IPV4_ADDR_SIZE);
+    memcpy(arp_packet->sender_ip, xnet_local_ip.addr, XNET_IPV4_ADDR_SIZE);
     memcpy(arp_packet->target_mac, target_mac, XNET_MAC_ADDR_SIZE);
     memcpy(arp_packet->target_ip, target_ip, XNET_IPV4_ADDR_SIZE);
     // 发送ARP响应，单播
@@ -137,13 +137,13 @@ void xarp_in(xnet_packet_t* packet) {
     }
 
     // 处理无偿ARP
-    if (xipaddr_is_equal_buf(arp_packet->sender_ip, arp_packet->target_ip)) {
+    if (xip_addr_eq(arp_packet->sender_ip, arp_packet->target_ip)) {
         update_arp_entry(arp_packet->sender_ip, arp_packet->sender_mac);
         return;
     }
 
     // 只处理发给自己的ARP
-    if (!xipaddr_is_equal_buf(xnet_local_ip.array, arp_packet->target_ip)) {
+    if (!xip_addr_eq(xnet_local_ip.addr, arp_packet->target_ip)) {
         return;
     }
 

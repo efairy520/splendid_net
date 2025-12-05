@@ -9,10 +9,9 @@
 #define swap_order16(v)   ((((v) & 0xFF) << 8) | (((v) >> 8) & 0xFF)) // 大小端转换
 #define XNET_CFG_PACKET_MAX_SIZE        1514                // 收发数据包的最大大小 1500+6+6+2
 #define XNET_CFG_DEFAULT_IP               {192, 168, 254, 2}  // 协议栈的IP地址
-#define xipaddr_is_equal_buf(a, b)  (memcmp((a), (b), XNET_IPV4_ADDR_SIZE) == 0)
+#define xip_addr_eq(a, b)  (memcmp((a), (b), XNET_IPV4_ADDR_SIZE) == 0)
 #define XNET_IPV4_ADDR_SIZE             4                   // IP地址长度
 #define XNET_MAC_ADDR_SIZE              6                   // MAC地址长度
-#define xipaddr_is_equal(addr1, addr2)       ((addr1)->value == (addr2)->value)
 
 // 错误码枚举
 typedef enum _xnet_status_t {
@@ -57,12 +56,11 @@ typedef enum _xnet_protocol_t {
 } xnet_protocol_t;
 
 // IP地址，使用共用体，节省空间
-typedef union _xip_addr_u {
-    uint8_t array[XNET_IPV4_ADDR_SIZE]; // 以字节形式存储的ip
-    uint32_t value; // 32位的ip地址
-} xip_addr_u;
+typedef struct _xip_addr_t {
+    uint8_t addr[XNET_IPV4_ADDR_SIZE]; // 以字节形式存储的ip
+} xip_addr_t;
 
-extern const xip_addr_u xnet_local_ip; // 协议栈的IP地址
+extern const xip_addr_t xnet_local_ip; // 协议栈的IP地址
 
 // 协议栈初始化
 void xnet_init(void);

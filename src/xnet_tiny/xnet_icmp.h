@@ -22,6 +22,6 @@ typedef struct _xicmp_hdr_t {
 #define XICMP_CODE_ECHO_REPLY 0
 
 void xicmp_init(void);
-void xicmp_in(xip_addr_u* src_ip, xnet_packet_t* packet);
+void xicmp_in(xip_addr_t* src_ip, xnet_packet_t* packet);
 
 #endif //XNET_ICMP_H

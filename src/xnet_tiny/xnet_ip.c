@@ -47,7 +47,7 @@ void xip_in(xnet_packet_t* packet) {
     xip_hdr_t* ip_hdr = (xip_hdr_t*) packet->data_start;
     uint32_t total_size, header_size;
     uint16_t pre_checksum;
-    xip_addr_u src_ip;
+    xip_addr_t src_ip;
 
     // 进行一些必要性的检查：版本号要求
     if (ip_hdr->version != XNET_VERSION_IPV4) {
@@ -69,11 +69,11 @@ void xip_in(xnet_packet_t* packet) {
     }
 
     // 只处理目标IP为自己的数据包，其它广播之类的IP全部丢掉
-    if (!xipaddr_is_equal_buf(xnet_local_ip.array, ip_hdr->dest_ip)) {
+    if (!xip_addr_eq(xnet_local_ip.addr, ip_hdr->dest_ip)) {
         return;
     }
 
-    memcpy(src_ip.array, ip_hdr->src_ip, XNET_IPV4_ADDR_SIZE);
+    memcpy(src_ip.addr, ip_hdr->src_ip, XNET_IPV4_ADDR_SIZE);
     switch(ip_hdr->protocol) {
         case XNET_PROTOCOL_ICMP:
             remove_header(packet, header_size);
@@ -90,7 +90,7 @@ void xip_in(xnet_packet_t* packet) {
  * @param packet 待发送IP数据包
  * @return 发送结果
  */
-static xnet_status_t resolve_and_send(xip_addr_u* dest_ip, xnet_packet_t* packet) {
+static xnet_status_t resolve_and_send(xip_addr_t* dest_ip, xnet_packet_t* packet) {
     xnet_status_t status;
     uint8_t* mac_addr;
 
@@ -107,7 +107,7 @@ static xnet_status_t resolve_and_send(xip_addr_u* dest_ip, xnet_packet_t* packet
  * @param packet
  * @return
  */
-xnet_status_t xip_out(xnet_protocol_t protocol, xip_addr_u* dest_ip, xnet_packet_t* packet) {
+xnet_status_t xip_out(xnet_protocol_t protocol, xip_addr_t* dest_ip, xnet_packet_t* packet) {
     static uint32_t ip_packet_id = 0;
     xip_hdr_t* ip_hdr;
     // 添加ip头部
@@ -121,8 +121,8 @@ xnet_status_t xip_out(xnet_protocol_t protocol, xip_addr_u* dest_ip, xnet_packet
     ip_hdr->flags_fragment = 0; //不支持，填0
     ip_hdr->ttl = XNET_IP_DEFAULT_TTL;
     ip_hdr->protocol = protocol;
-    memcpy(ip_hdr->dest_ip, dest_ip->array, XNET_IPV4_ADDR_SIZE);
-    memcpy(ip_hdr->src_ip, xnet_local_ip.array, XNET_IPV4_ADDR_SIZE);
+    memcpy(ip_hdr->dest_ip, dest_ip->addr, XNET_IPV4_ADDR_SIZE);
+    memcpy(ip_hdr->src_ip, xnet_local_ip.addr, XNET_IPV4_ADDR_SIZE);
     ip_hdr->hdr_checksum = 0;
     ip_hdr->hdr_checksum = checksum16((uint16_t*)ip_hdr, sizeof(xip_hdr_t), 0, 1);;
 

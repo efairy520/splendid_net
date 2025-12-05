@@ -10,7 +10,7 @@ void xicmp_init(void) {
 
 }
 
-static xnet_status_t reply_icmp_request(xicmp_hdr_t* icmp_hdr, xip_addr_u* src_ip, xnet_packet_t* packet) {
+static xnet_status_t reply_icmp_request(xicmp_hdr_t* icmp_hdr, xip_addr_t* src_ip, xnet_packet_t* packet) {
     // 答复继续使用
     xnet_packet_t* reply_packet = prepare_packet_for_send(packet->data_length);
     xicmp_hdr_t* reply_hdr = (xicmp_hdr_t*)reply_packet->data_start;
@@ -34,7 +34,7 @@ static xnet_status_t reply_icmp_request(xicmp_hdr_t* icmp_hdr, xip_addr_u* src_i
 
 }
 
-void xicmp_in(xip_addr_u* src_ip, xnet_packet_t* packet) {
+void xicmp_in(xip_addr_t* src_ip, xnet_packet_t* packet) {
     xicmp_hdr_t *icmp_hdr = (xicmp_hdr_t *)packet->data_start;
 
     if (packet->data_length >= sizeof(xicmp_hdr_t) && (icmp_hdr->type == XICMP_CODE_ECHO_REQUEST)) {
