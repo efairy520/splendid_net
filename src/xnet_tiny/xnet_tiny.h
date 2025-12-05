@@ -61,7 +61,7 @@ typedef union _xip_addr_u {
     uint32_t value; // 32位的ip地址
 } xip_addr_u;
 
-extern const xip_addr_u xnet_host_ip; // 协议栈的IP地址
+extern const xip_addr_u xnet_local_ip; // 协议栈的IP地址
 
 // 协议栈初始化
 void xnet_init(void);

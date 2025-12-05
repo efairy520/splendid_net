@@ -5,26 +5,26 @@
 #include "string.h"
 #include "xnet_ethernet.h"
 
-#define XARP_ENTRY_FREE		        0   // 空闲
-#define XARP_ENTRY_OK		        1   // 就绪
-#define XARP_ENTRY_RESOLVING	    2   // ARP表项正在解析
-#define XARP_TIMER_PERIOD           1   // ARP扫描周期，1秒
+#define XARP_ENTRY_FREE		            0                   // 空闲
+#define XARP_ENTRY_OK		            1                   // 就绪
+#define XARP_ENTRY_RESOLVING	        2                   // ARP表项正在解析
+#define XARP_TIMER_PERIOD               1                   // ARP扫描周期，1秒
 
-#define XARP_CFG_ENTRY_OK_TMO	        10                   // ARP表项OK超时时间
-#define XARP_CFG_ENTRY_RESOLVING_TMO	    5                   // ARP表项PENDING超时时间
+#define XARP_CFG_ENTRY_OK_TMO	        10                  // ARP表项OK超时时间
+#define XARP_CFG_ENTRY_RESOLVING_TMO	5                   // ARP表项PENDING超时时间
 #define XARP_CFG_MAX_RETRIES		    3                   // ARP表挂起时重试查询次数
 
 // ARP表项
 typedef struct _xarp_entry_t {
-    xip_addr_u ipaddr; // ip地址
-    uint8_t macaddr[XNET_MAC_ADDR_SIZE]; // mac地址
-    uint8_t state; // 状态位
-    uint16_t ttl; // 剩余时间
-    uint8_t retry_cnt; // 剩余重试次数
+    xip_addr_u ipaddr;                                      // ip地址
+    uint8_t macaddr[XNET_MAC_ADDR_SIZE];                    // mac地址
+    uint8_t state;                                          // 状态位
+    uint16_t ttl;                                           // 剩余时间
+    uint8_t retry_cnt;                                      // 剩余重试次数
 } xarp_entry_t;
 
-static xarp_entry_t arp_entry; // ARP表项
-static xnet_time_t arp_last_time; // ARP定时器，记录上一次扫描的时间
+static xarp_entry_t arp_entry;                              // ARP表项
+static xnet_time_t arp_last_time;                           // ARP定时器，记录上一次扫描的时间
 
 void xarp_init(void) {
     arp_entry.state = XARP_ENTRY_FREE;
