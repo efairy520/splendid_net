@@ -27,7 +27,8 @@ struct _xudp_socket_t {
 
 #pragma pack(1)
 typedef struct _xudp_hdr_t {
-    uint16_t src_port, dest_port;
+    uint16_t src_port;
+    uint16_t dest_port;
     uint16_t total_len;
     uint16_t checksum;
 } xudp_hdr_t;
@@ -35,6 +36,7 @@ typedef struct _xudp_hdr_t {
 
 void xudp_init(void);
 void xudp_in(xudp_socket_t* udp_socket, xip_addr_t* src_ip, xnet_packet_t* packet);
+xnet_status_t xudp_out(xudp_socket_t* udp_socket, xip_addr_t* dest_ip, uint16_t dest_port, xnet_packet_t* packet);
 xudp_socket_t* xudp_open(xudp_handler_t handler);
 void xudp_close(xudp_socket_t* udp_socket);
 xudp_socket_t* xudp_find(uint16_t port);

@@ -6,7 +6,7 @@
 
 #define TIME_STR_SIZE         128
 
-xnet_status_t datetime_handler(xudp_socket_t * udp, xip_addr_t* src_ip, uint16_t src_port, xnet_packet_t* packet) {
+xnet_status_t datetime_handler(xudp_socket_t * udp_socket, xip_addr_t* src_ip, uint16_t src_port, xnet_packet_t* packet) {
     time_t rawtime;
     const struct tm * timeinfo;
     xnet_packet_t* tx_packet;
@@ -16,11 +16,12 @@ xnet_status_t datetime_handler(xudp_socket_t * udp, xip_addr_t* src_ip, uint16_t
 
     time(&rawtime);
     timeinfo = localtime(&rawtime);
-    str_size = strftime((char*)tx_packet->data, TIME_STR_SIZE, "%A %B %d, %Y %T %z", timeinfo);
+    // 先改成最简单的格式测试
+    str_size = strftime((char*)tx_packet->data, TIME_STR_SIZE, "%Y-%m-%d %H:%M:%S", timeinfo);
+    truncate_packet(tx_packet, str_size);
 
-    // 注意：这里缺少 xudp_out/xip_out 的发送逻辑
-
-    return XNET_OK;
+    // 发送
+    return xudp_out(udp_socket, src_ip, src_port, tx_packet);
 }
 
 xnet_status_t xserver_datetime_create(uint16_t port) {

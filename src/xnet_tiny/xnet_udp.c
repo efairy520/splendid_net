@@ -57,6 +57,21 @@ void xudp_in(xudp_socket_t* udp_socket, xip_addr_t* src_ip, xnet_packet_t* packe
     }
 }
 
+xnet_status_t xudp_out(xudp_socket_t* udp_socket, xip_addr_t* dest_ip, uint16_t dest_port, xnet_packet_t* packet) {
+    xudp_hdr_t * udp_hdr;
+    uint16_t checksum;
+
+    add_header(packet, sizeof(xudp_hdr_t));
+    udp_hdr = (xudp_hdr_t*)packet->data;
+    udp_hdr->src_port = swap_order16(udp_socket->local_port);
+    udp_hdr->dest_port = swap_order16(dest_port);
+    udp_hdr->total_len = swap_order16(packet->length);
+    udp_hdr->checksum = 0;
+    checksum = checksum_peso(&xnet_local_ip, dest_ip, XNET_PROTOCOL_UDP, (uint16_t*)packet->data, packet->length);
+    udp_hdr->checksum = (checksum == 0) ? 0xFFFF : checksum;
+    return xip_out(XNET_PROTOCOL_UDP, dest_ip, packet);
+}
+
 xudp_socket_t* xudp_open(xudp_handler_t handler) {
     // 1. 遍历资源池
     for (xudp_socket_t* cur = udp_socket_pool; cur < &udp_socket_pool[XUDP_CFG_MAX_UDP]; cur++) {

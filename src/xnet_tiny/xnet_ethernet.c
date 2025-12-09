@@ -174,14 +174,17 @@ void ethernet_in(xnet_packet_t* packet) {
     }
 
     // 往上分解到各个协议处理
-    xether_hdr_t* hdr = (xether_hdr_t*) packet->data;
+    xether_hdr_t* ether_hdr = (xether_hdr_t*) packet->data;
     // 协议类型占用两个字节，需要大小端转换
-    switch (swap_order16(hdr->protocol)) {
+    switch (swap_order16(ether_hdr->protocol)) {
         case XNET_PROTOCOL_ARP:
             remove_header(packet, sizeof(xether_hdr_t));
             xarp_in(packet);
             break;
         case XNET_PROTOCOL_IP: {
+            // 避免客户端第一次发送请求没有响应
+            xip_hdr_t* ip_hdr = packet->data + sizeof(xether_hdr_t);
+            update_arp_entry(ip_hdr->src_ip, ether_hdr->src);
             remove_header(packet, sizeof(xether_hdr_t));
             xip_in(packet);
             break;
