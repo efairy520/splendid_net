@@ -120,6 +120,7 @@ void xip_in(xnet_packet_t* packet) {
             }
             break;
         case XNET_PROTOCOL_TCP:
+            truncate_packet(packet, total_size);
             remove_header(packet, header_size);
             xtcp_in(&src_ip, packet);
             break;

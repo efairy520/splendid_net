@@ -2,6 +2,9 @@
  * 手写 TCP/IP 协议栈
  */
 #include "xnet_tiny.h"
+
+
+
 #include "xnet_ethernet.h"
 #include "xnet_arp.h"
 #include "xnet_ip.h"
@@ -77,6 +80,7 @@ void xnet_init(void) {
     xicmp_init();
     xudp_init();
     xtcp_init();
+    srand(xsys_get_time());
 }
 
 /**

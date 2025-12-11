@@ -3,6 +3,9 @@
 //
 
 #include "xnet_tcp.h"
+
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "xnet_ip.h"
@@ -29,6 +32,89 @@ static xnet_status_t tcp_send_reset(uint32_t remote_ack, uint16_t local_port, xi
     tcp_hdr->checksum = checksum_peso(&xnet_local_ip, remote_ip, XNET_PROTOCOL_TCP, (uint16_t*)packet->data, packet->length);
     tcp_hdr->checksum = tcp_hdr->checksum ? tcp_hdr->checksum : 0xFFFF;
     return xip_out(XNET_PROTOCOL_TCP, remote_ip, packet);
+}
+
+static void tcp_read_mss(xtcp_socket_t * tcp, xtcp_hdr_t * tcp_hdr)
+{
+    uint16_t opt_len = tcp_hdr->hdr_flags.hdr_len * 4 - sizeof(xtcp_hdr_t);
+
+    if (opt_len == 0) {
+        tcp->remote_mss = XTCP_MSS_DEFAULT;
+    }
+    else {
+        uint8_t* opt_data = (uint8_t*)tcp_hdr + sizeof(xtcp_hdr_t);
+        uint8_t* opt_end = opt_data + opt_len;
+
+        while ((*opt_data != XTCP_KIND_END) && (opt_data < opt_end)) {
+            if ((*opt_data++ == XTCP_KIND_MSS) && (*opt_data++ == 4)) {
+                tcp->remote_mss = swap_order16(*(uint16_t *)opt_data);
+                return;
+            }
+        }
+    }
+}
+
+static xnet_status_t tcp_send(xtcp_socket_t* tcp, uint8_t flags) {
+    xnet_packet_t* packet;
+    xtcp_hdr_t* tcp_hdr;
+    xnet_status_t status;
+
+    packet = xnet_alloc_tx_packet(sizeof(xtcp_hdr_t));
+    tcp_hdr = (xtcp_hdr_t*) packet->data;
+
+    tcp_hdr->src_port = swap_order16(tcp->local_port);
+    tcp_hdr->dest_port = swap_order16(tcp->remote_port);
+    tcp_hdr->seq = tcp->next_seq;
+    tcp_hdr->ack = swap_order32(tcp->ack);
+    tcp_hdr->hdr_flags.all = 0;
+    tcp_hdr->hdr_flags.hdr_len = sizeof(xtcp_hdr_t) / 4;
+    tcp_hdr->hdr_flags.flags = flags;
+    tcp_hdr->hdr_flags.all = swap_order16(tcp_hdr->hdr_flags.all);
+    tcp_hdr->window = 1024;
+    tcp_hdr->checksum = 0;
+    tcp_hdr->urgent_ptr = 0;
+
+    tcp_hdr->checksum = checksum_peso(xnet_local_ip.addr, &tcp->remote_ip, XNET_PROTOCOL_TCP,
+                                     (uint16_t*)packet->data, packet->length);
+    tcp_hdr->checksum = tcp_hdr->checksum ? tcp_hdr->checksum : 0xFFFF;
+
+    status = xip_out(XNET_PROTOCOL_TCP, &tcp->remote_ip, packet);
+    if (status < 0) return status;
+
+    if (flags & (XTCP_FLAG_SYN | XTCP_FLAG_FIN)) {
+        tcp->next_seq++;
+    }
+    return XNET_OK;
+}
+
+static void tcp_process_accept(xtcp_socket_t* listen_tcp, xip_addr_t* remote_ip, xtcp_hdr_t* tcp_hdr) {
+    uint16_t hdr_flags = tcp_hdr->hdr_flags.all;
+
+    if (hdr_flags & XTCP_FLAG_SYN) {
+        xnet_status_t err;
+        uint32_t ack = tcp_hdr->seq + 1;
+
+        xtcp_socket_t* new_tcp = xtcp_alloc_socket(listen_tcp->handler);
+        if (!new_tcp) return;
+
+        new_tcp->state = XTCP_STATE_SYN_RECVD;
+        new_tcp->local_port = listen_tcp->local_port;
+        new_tcp->handler = listen_tcp->handler;
+        new_tcp->remote_port = tcp_hdr->src_port;
+        new_tcp->remote_ip = *remote_ip;
+        new_tcp->ack = ack;
+        new_tcp->next_seq = tcp_get_init_seq();
+        new_tcp->remote_win = tcp_hdr->window;
+
+        tcp_read_mss(new_tcp, tcp_hdr);
+
+        err = tcp_send(new_tcp, XTCP_FLAG_SYN | XTCP_FLAG_ACK);
+        if (err < 0) {
+            xtcp_close_socket(new_tcp);
+        }
+    } else {
+        tcp_send_reset(tcp_hdr->seq, listen_tcp->local_port, remote_ip, tcp_hdr->src_port);
+    }
 }
 
 void xtcp_init(void) {
@@ -65,6 +151,31 @@ void xtcp_in(xip_addr_t* remote_ip, xnet_packet_t* packet) {
     socket = xtcp_find_socket(remote_ip, tcp_hdr->src_port, tcp_hdr->dest_port);
     if (socket == NULL) {
         tcp_send_reset(tcp_hdr->seq + 1, tcp_hdr->dest_port, remote_ip, tcp_hdr->src_port);
+        return;
+    }
+    socket->remote_win = tcp_hdr->window;
+
+    if (socket->state == XTCP_STATE_LISTEN) {
+        tcp_process_accept(socket, remote_ip, tcp_hdr);
+        return;
+    }
+
+    if (tcp_hdr->seq != socket->ack) {
+        tcp_send_reset(tcp_hdr->seq + 1, tcp_hdr->dest_port, remote_ip, tcp_hdr->src_port);
+        return;
+    }
+
+    remove_header(packet, tcp_hdr->hdr_flags.hdr_len);
+    switch (socket->state) {
+        case XTCP_STATE_SYN_RECVD:
+            if (tcp_hdr->hdr_flags.flags & XTCP_FLAG_ACK) {
+                socket->state = XTCP_STATE_ESTABLISHED;
+                socket->handler(socket, XTCP_EVENT_CONNECTED);
+            }
+            break;
+        case XTCP_STATE_ESTABLISHED:
+            printf("connection ok");
+            break;
     }
 }
 
@@ -80,6 +191,9 @@ xtcp_socket_t* xtcp_alloc_socket(xtcp_event_handler_t handler) {
             // 初始化状态和回调
             curr->state = XTCP_STATE_CLOSED;
             curr->handler = handler;
+            curr->remote_win = XTCP_MSS_DEFAULT;
+            curr->remote_mss = XTCP_MSS_DEFAULT;
+            curr->next_seq = tcp_get_init_seq();
             return curr;
         }
     }
@@ -91,9 +205,8 @@ xnet_status_t xtcp_bind_socket(xtcp_socket_t* socket, uint16_t local_port) {
         return XNET_ERR_PARAM;
     }
 
-    // 1. 检查端口冲突
+    // 1. 检查端口是否已占用
     for (xtcp_socket_t* curr = tcp_socket_pool; curr < &tcp_socket_pool[XTCP_MAX_SOCKET_COUNT]; curr++) {
-        // 【优化点2】：只检查“活跃”的 Socket
         // 如果 curr 是 FREE 的，即使它残留的 local_port 也是这个值，也不算冲突。
         if (curr != socket && curr->state != XTCP_STATE_FREE && curr->local_port == local_port) {
             return XNET_ERR_BINDED;
@@ -144,13 +257,12 @@ xtcp_socket_t* xtcp_find_socket(xip_addr_t* remote_ip, uint16_t remote_port, uin
 xnet_status_t xtcp_listen_socket(xtcp_socket_t* socket) {
     if (socket == NULL) return XNET_ERR_PARAM;
 
-    // 【优化点3】：状态检查
     // 只有处于 CLOSED 状态且已绑定端口的 Socket 才能开始 Listen
     if (socket->state != XTCP_STATE_CLOSED) {
          return XNET_ERR_STATE;
     }
     if (socket->local_port == 0) {
-        return XNET_ERR_PARAM; // 必须先 bind
+        return XNET_ERR_PARAM;
     }
 
     socket->state = XTCP_STATE_LISTEN;

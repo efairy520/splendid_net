@@ -7,13 +7,16 @@
 
 #include "xnet_tiny.h"
 
-// 1. 配置宏：名字更具体，表明是 Socket 的最大数量
+// 1. Socket 的最大数量
 #define XTCP_MAX_SOCKET_COUNT   40
-
 #define XTCP_FLAG_FIN    (1 << 0)
 #define XTCP_FLAG_SYN    (1 << 1)
 #define XTCP_FLAG_RST    (1 << 2)
 #define XTCP_FLAG_ACK    (1 << 4)
+
+#define XTCP_KIND_END       0
+#define XTCP_KIND_MSS       2
+#define XTCP_MSS_DEFAULT    1460
 
 #pragma pack(1)
 typedef struct _xtcp_hdr_t {
@@ -41,6 +44,7 @@ typedef enum _xtcp_socket_state_t {
     XTCP_STATE_FREE,
     XTCP_STATE_CLOSED,
     XTCP_STATE_LISTEN,
+    XTCP_STATE_SYN_RECVD,
     XTCP_STATE_ESTABLISHED,
 } xtcp_socket_state_t;
 
@@ -56,7 +60,7 @@ typedef enum _xtcp_event_type_t {
 typedef struct _xtcp_socket_t xtcp_socket_t;
 
 // TCP 事件回调函数指针（接口）
-typedef xnet_status_t (*xtcp_event_handler_t) (xtcp_socket_t *socket, xtcp_event_type_t event);
+typedef xnet_status_t (*xtcp_event_handler_t) (xtcp_socket_t* socket, xtcp_event_type_t event);
 
 // 5. TCP Socket 结构体
 struct _xtcp_socket_t {
@@ -64,6 +68,10 @@ struct _xtcp_socket_t {
     uint16_t               local_port;
     uint16_t               remote_port;
     xip_addr_t             remote_ip;
+    uint32_t               next_seq;
+    uint32_t               ack;
+    uint16_t               remote_mss;
+    uint16_t               remote_win;
     xtcp_event_handler_t   handler;
 };
 

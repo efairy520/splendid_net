@@ -26,6 +26,7 @@
 #define XNET_IPV4_ADDR_SIZE             4                   // IP地址长度
 #define XNET_MAC_ADDR_SIZE              6                   // MAC地址长度
 #define min(a, b)               ((a) > (b) ? (b) : (a))
+#define tcp_get_init_seq() ((rand() << 16) + rand())
 
 // 错误码枚举
 typedef enum _xnet_status_t {
