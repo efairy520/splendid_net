@@ -3,6 +3,7 @@
  */
 #include "xnet_tiny.h"
 
+#include <stdlib.h>
 
 
 #include "xnet_ethernet.h"

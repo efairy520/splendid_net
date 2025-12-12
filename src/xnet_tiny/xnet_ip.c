@@ -120,6 +120,7 @@ void xip_in(xnet_packet_t* packet) {
             }
             break;
         case XNET_PROTOCOL_TCP:
+            // 无负载的TCP包，有效数据只有54，驱动会在末尾填充到60，所以将length截断成54
             truncate_packet(packet, total_size);
             remove_header(packet, header_size);
             xtcp_in(&src_ip, packet);

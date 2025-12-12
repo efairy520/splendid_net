@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include "xnet_tcp.h"
 
-static xnet_status_t http_handler(xtcp_socket_t* socket, xtcp_event_type_t event) {
+static xnet_status_t http_handler(xtcp_pcb_t* pcb, xtcp_event_t event) {
     if (event == XTCP_EVENT_CONNECTED) {
         printf("http connected\n");
     }
@@ -17,8 +17,8 @@ static xnet_status_t http_handler(xtcp_socket_t* socket, xtcp_event_type_t event
 }
 
 xnet_status_t xserver_http_create(uint16_t port) {
-    xtcp_socket_t* socket = xtcp_alloc_socket(http_handler);
-    xtcp_bind_socket(socket, port);
-    xtcp_listen_socket(socket);
+    xtcp_pcb_t* pcb = xtcp_pcb_new(http_handler);
+    xtcp_pcb_bind(pcb, port);
+    xtcp_pcb_listen(pcb);
     return XNET_OK;
 }
