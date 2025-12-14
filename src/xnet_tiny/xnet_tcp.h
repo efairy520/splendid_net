@@ -40,16 +40,22 @@ typedef struct _xtcp_hdr_t {
 #pragma pack(0)
 
 // 2. TCP 生命周期状态
-typedef enum _xtcp_state_t {
+typedef enum _xtcp_state_e {
     XTCP_STATE_FREE,
     XTCP_STATE_CLOSED,
     XTCP_STATE_LISTEN,
     XTCP_STATE_SYN_RECVD,
     XTCP_STATE_ESTABLISHED,
+    XTCP_STATE_FIN_WAIT_1,
+    XTCP_STATE_FIN_WAIT_2,
+    XTCP_STATE_CLOSING,
+    XTCP_STATE_TIMED_WAIT,
+    XTCP_STATE_CLOSE_WAIT,
+    XTCP_STATE_LAST_ACK,
 } xtcp_state_t;
 
 // 3. 事件类型
-typedef enum _xtcp_event_t {
+typedef enum _xtcp_event_e {
     XTCP_EVENT_CONNECTED,       // 连接成功
     XTCP_EVENT_DATA_RECEIVED,   // 收到数据
     XTCP_EVENT_CLOSED,          // 连接断开
@@ -72,7 +78,7 @@ struct _xtcp_pcb_t {
     uint32_t               ack;
     uint16_t               remote_mss;
     uint16_t               remote_win;
-    xtcp_event_handler_t   handler;
+    xtcp_event_handler_t   on_event;
 };
 
 void xtcp_init(void);
@@ -82,7 +88,7 @@ xtcp_pcb_t* xtcp_pcb_new(xtcp_event_handler_t handler);
 xnet_status_t xtcp_pcb_bind(xtcp_pcb_t* pcb, uint16_t local_port);
 xtcp_pcb_t* xtcp_pcb_find(xip_addr_t* remote_ip, uint16_t remote_port, uint16_t local_port);
 xnet_status_t xtcp_pcb_listen(xtcp_pcb_t* pcb);
-xnet_status_t xtcp_pcb_free(xtcp_pcb_t* pcb);
+xnet_status_t xtcp_pcb_close(xtcp_pcb_t* pcb);
 
 
 #endif //XNET_TCP_H

@@ -9,6 +9,7 @@
 static xnet_status_t http_handler(xtcp_pcb_t* pcb, xtcp_event_t event) {
     if (event == XTCP_EVENT_CONNECTED) {
         printf("http connected\n");
+        xtcp_pcb_close(pcb);
     }
     if (event == XTCP_EVENT_CLOSED) {
         printf("http closed\n");

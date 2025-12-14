@@ -53,7 +53,8 @@ static void tcp_read_mss(xtcp_pcb_t* pcb, xtcp_hdr_t* tcp_hdr) {
 }
 
 static xnet_status_t tcp_send_flags(xtcp_pcb_t* pcb, uint8_t flags) {
-    xnet_packet_t* packet = xnet_alloc_tx_packet(sizeof(xtcp_hdr_t));
+    uint16_t opt_size = (flags & XTCP_FLAG_SYN) ? 4 : 0;
+    xnet_packet_t* packet = xnet_alloc_tx_packet(opt_size + sizeof(xtcp_hdr_t));
     xtcp_hdr_t* tcp_hdr = (xtcp_hdr_t*) packet->data;
 
     tcp_hdr->src_port = swap_order16(pcb->local_port);
@@ -61,12 +62,18 @@ static xnet_status_t tcp_send_flags(xtcp_pcb_t* pcb, uint8_t flags) {
     tcp_hdr->seq = swap_order32(pcb->seq);
     tcp_hdr->ack = swap_order32(pcb->ack);
     tcp_hdr->hdr_flags.all = 0;
-    tcp_hdr->hdr_flags.hdr_len = sizeof(xtcp_hdr_t) / 4;
+    tcp_hdr->hdr_flags.hdr_len = (opt_size + sizeof(xtcp_hdr_t)) / 4;
     tcp_hdr->hdr_flags.flags = flags;
     tcp_hdr->hdr_flags.all = swap_order16(tcp_hdr->hdr_flags.all);
     tcp_hdr->window = swap_order16(1024);
     tcp_hdr->checksum = 0;
     tcp_hdr->urgent_ptr = 0;
+    if (flags & XTCP_FLAG_SYN) {
+        uint8_t* opt_data = packet->data + sizeof(xtcp_hdr_t);
+        opt_data[0] = XTCP_KIND_MSS;
+        opt_data[1] = 4;
+        *(uint16_t*)(opt_data + 2) = swap_order16(XTCP_MSS_DEFAULT);
+    }
 
     tcp_hdr->checksum = checksum_peso(xnet_local_ip.addr, &pcb->remote_ip, XNET_PROTOCOL_TCP,
                                      (uint16_t*)packet->data, packet->length);
@@ -76,7 +83,7 @@ static xnet_status_t tcp_send_flags(xtcp_pcb_t* pcb, uint8_t flags) {
     if (status < 0) return status;
 
     if (flags & (XTCP_FLAG_SYN | XTCP_FLAG_FIN)) {
-        pcb->seq++; // flag占用一个字节
+        pcb->seq++; // SYN或FIN占用1个字节，ACK不占用
     }
     return XNET_OK;
 }
@@ -107,7 +114,7 @@ static void tcp_process_accept(xtcp_pcb_t* listen_tcp, xip_addr_t* remote_ip, xt
         if (!child_pcb) return;
 
         child_pcb->state = XTCP_STATE_SYN_RECVD; // 收到了SYN请求
-        child_pcb->handler = listen_tcp->handler;
+        child_pcb->on_event = listen_tcp->on_event;
         child_pcb->local_port = listen_tcp->local_port;
         child_pcb->remote_port = tcp_hdr->src_port;
         child_pcb->remote_ip = *remote_ip;
@@ -118,11 +125,15 @@ static void tcp_process_accept(xtcp_pcb_t* listen_tcp, xip_addr_t* remote_ip, xt
         // 发送SYN + ACK
         xnet_status_t status = tcp_send_flags(child_pcb, XTCP_FLAG_SYN | XTCP_FLAG_ACK);
         if (status < 0) {
-            xtcp_pcb_free(child_pcb);
+            (child_pcb);
         }
     } else {
         tcp_send_reset(tcp_hdr->seq, listen_tcp->local_port, remote_ip, tcp_hdr->src_port);
     }
+}
+
+static void tcp_pcb_free(xtcp_pcb_t* pcb) {
+    pcb->state = XTCP_STATE_FREE;
 }
 
 void xtcp_init(void) {
@@ -161,9 +172,9 @@ void xtcp_in(xip_addr_t* remote_ip, xnet_packet_t* packet) {
     }
     pcb->remote_win = tcp_hdr->window;
 
-    // 第一次握手
+    // 收到第一次握手
     if (pcb->state == XTCP_STATE_LISTEN) {
-        // 第二次握手
+        // 发送第二次握手
         tcp_process_accept(pcb, remote_ip, tcp_hdr);
         return;
     }
@@ -175,15 +186,46 @@ void xtcp_in(xip_addr_t* remote_ip, xnet_packet_t* packet) {
 
     // 这里可能是第三次握手，也可能是连接已建立后的正常通信，此时tcp_hdr可能包含option数据，所以不能使用sizeof(xtcp_hdr_t)
     remove_header(packet, tcp_hdr->hdr_flags.hdr_len * 4);
+    uint16_t flags = tcp_hdr->hdr_flags.flags;
     switch (pcb->state) {
-        case XTCP_STATE_SYN_RECVD: // 第三次握手
-            if (tcp_hdr->hdr_flags.flags & XTCP_FLAG_ACK) {
+        case XTCP_STATE_SYN_RECVD:
+            // 作为服务端，收到收到第三次握手
+            if (flags & XTCP_FLAG_ACK) {
                 pcb->state = XTCP_STATE_ESTABLISHED;
-                pcb->handler(pcb, XTCP_EVENT_CONNECTED); // 调用回调函数
+                pcb->on_event(pcb, XTCP_EVENT_CONNECTED);
             }
             break;
-        case XTCP_STATE_ESTABLISHED: // 连接已经建立
-            printf("connection ok\n");
+        case XTCP_STATE_ESTABLISHED:
+            // 作为服务端，收到第一次挥手
+            if ((flags & XTCP_FLAG_FIN) && (flags & XTCP_FLAG_ACK)) {
+                pcb->state = XTCP_STATE_LAST_ACK;
+                pcb->ack++;
+                tcp_send_flags(pcb, XTCP_FLAG_FIN | XTCP_FLAG_ACK);
+            }
+            break;
+        case XTCP_STATE_FIN_WAIT_1:
+            // 作为客户端，直接收到第三次挥手
+            if ((flags & XTCP_FLAG_FIN) && (flags & XTCP_FLAG_ACK)) {
+                tcp_pcb_free(pcb);
+            }
+            // 作为客户端，收到第二次挥手
+            else if ((flags & XTCP_FLAG_ACK)) {
+                pcb->state = XTCP_STATE_FIN_WAIT_2;
+            }
+            break;
+        case XTCP_STATE_FIN_WAIT_2:
+            // 检查是否收到了对方的 FIN 包（即第三次挥手的 FIN 部分）
+            if ((flags & XTCP_FLAG_FIN)) {
+                pcb->ack++;
+                tcp_send_flags(pcb,XTCP_FLAG_ACK);
+                tcp_pcb_free(pcb);
+            }
+            break;
+        case XTCP_STATE_LAST_ACK:
+            if (flags & XTCP_FLAG_ACK) {
+                pcb->on_event(pcb, XTCP_EVENT_CLOSED);
+                tcp_pcb_free(pcb);
+            }
             break;
     }
 }
@@ -193,7 +235,7 @@ xtcp_pcb_t* xtcp_pcb_new(xtcp_event_handler_t handler) {
     xtcp_pcb_t* pcb = xtcp_pcb_alloc();
     if (!pcb) return NULL;
     pcb->state = XTCP_STATE_CLOSED;
-    pcb->handler = handler;
+    pcb->on_event = handler;
     return pcb;
 }
 
@@ -263,10 +305,16 @@ xnet_status_t xtcp_pcb_listen(xtcp_pcb_t* pcb) {
     return XNET_OK;
 }
 
-xnet_status_t xtcp_pcb_free(xtcp_pcb_t* pcb) {
-    if (pcb == NULL) return XNET_ERR_PARAM;
-    // 强制释放
-    pcb->state = XTCP_STATE_FREE;
-    pcb->handler = NULL;
+// 服务端主动关闭连接
+xnet_status_t xtcp_pcb_close(xtcp_pcb_t* pcb) {
+    xnet_status_t status;
+
+    if (pcb->state == XTCP_STATE_ESTABLISHED) {
+        status = tcp_send_flags(pcb, XTCP_FLAG_FIN | XTCP_FLAG_ACK); // 只要连接已建立，必然带ACK
+        if (status < 0) return status;
+        pcb->state = XTCP_STATE_FIN_WAIT_1;
+    } else {
+        tcp_pcb_free(pcb);
+    }
     return XNET_OK;
 }
