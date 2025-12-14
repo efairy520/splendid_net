@@ -114,7 +114,7 @@ static void tcp_process_accept(xtcp_pcb_t* listen_tcp, xip_addr_t* remote_ip, xt
         if (!child_pcb) return;
 
         child_pcb->state = XTCP_STATE_SYN_RECVD; // 收到了SYN请求
-        child_pcb->on_event = listen_tcp->on_event;
+        child_pcb->event_cb = listen_tcp->event_cb;
         child_pcb->local_port = listen_tcp->local_port;
         child_pcb->remote_port = tcp_hdr->src_port;
         child_pcb->remote_ip = *remote_ip;
@@ -192,7 +192,7 @@ void xtcp_in(xip_addr_t* remote_ip, xnet_packet_t* packet) {
             // 作为服务端，收到收到第三次握手
             if (flags & XTCP_FLAG_ACK) {
                 pcb->state = XTCP_STATE_ESTABLISHED;
-                pcb->on_event(pcb, XTCP_EVENT_CONNECTED);
+                pcb->event_cb(pcb, XTCP_EVENT_CONNECTED);
             }
             break;
         case XTCP_STATE_ESTABLISHED:
@@ -223,7 +223,7 @@ void xtcp_in(xip_addr_t* remote_ip, xnet_packet_t* packet) {
             break;
         case XTCP_STATE_LAST_ACK:
             if (flags & XTCP_FLAG_ACK) {
-                pcb->on_event(pcb, XTCP_EVENT_CLOSED);
+                pcb->event_cb(pcb, XTCP_EVENT_CLOSED);
                 tcp_pcb_free(pcb);
             }
             break;
@@ -235,7 +235,7 @@ xtcp_pcb_t* xtcp_pcb_new(xtcp_event_handler_t handler) {
     xtcp_pcb_t* pcb = xtcp_pcb_alloc();
     if (!pcb) return NULL;
     pcb->state = XTCP_STATE_CLOSED;
-    pcb->on_event = handler;
+    pcb->event_cb = handler;
     return pcb;
 }
 
