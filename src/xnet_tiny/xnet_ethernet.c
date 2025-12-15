@@ -15,25 +15,6 @@
 static uint8_t xnet_local_mac[XNET_MAC_ADDR_SIZE]; // 协议栈mac地址,由驱动回写
 static const uint8_t ether_broadcast_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // 以太网广播mac地址
 
-// 关闭填充字节
-#pragma pack(1)
-typedef struct _xether_hdr_t {
-    uint8_t dest[XNET_MAC_ADDR_SIZE]; // 目标mac地址，6字节
-    uint8_t src[XNET_MAC_ADDR_SIZE]; // 源mac地址，6字节
-    uint16_t protocol; // 协议/长度，2字节
-} xether_hdr_t;
-
-typedef struct _xarp_packet_t {
-    uint16_t hardware_type, protocol_type;              // 硬件类型、协议类型
-    uint8_t hardware_len, protocol_len;                 // 硬件长度、协议长度
-    uint16_t opcode;                                    // 请求/响应
-    uint8_t sender_mac[XNET_MAC_ADDR_SIZE];             // 发送包硬件地址
-    uint8_t sender_ip[XNET_IPV4_ADDR_SIZE];             // 发送包协议地址
-    uint8_t target_mac[XNET_MAC_ADDR_SIZE];             // 接收方硬件地址
-    uint8_t target_ip[XNET_IPV4_ADDR_SIZE];             // 接收方协议地址
-}xarp_packet_t;
-#pragma pack()
-
 /**
  * 发送一个以太网数据帧
  * @param protocol 上层数据协议，IP或ARP

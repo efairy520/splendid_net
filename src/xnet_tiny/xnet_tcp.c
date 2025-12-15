@@ -8,10 +8,71 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "xnet_ethernet.h"
 #include "xnet_ip.h"
 
 // 静态资源池
 static xtcp_pcb_t tcp_pcb_pool[XTCP_PCB_MAX_NUM];
+
+static void tcp_buf_init(xtcp_buf_t* tcp_buf) {
+    tcp_buf->front = tcp_buf->tail = 0;
+    tcp_buf->data_count = tcp_buf->unacked_count = 0;
+}
+
+static uint16_t tcp_buf_free_count(xtcp_buf_t* tcp_buf) {
+    return XTCP_CFG_RTX_BUF_SIZE - tcp_buf->data_count;
+}
+
+static uint16_t tcp_buf_wait_send_count(xtcp_buf_t* tcp_buf) {
+    return tcp_buf->data_count - tcp_buf->unacked_count;
+}
+
+static void tcp_buf_add_acked_count(xtcp_buf_t* tcp_buf, uint16_t size) {
+    tcp_buf->tail += size;
+    if (tcp_buf->tail >= XTCP_CFG_RTX_BUF_SIZE) {
+        tcp_buf->tail = 0;
+    }
+
+    tcp_buf->data_count -= size;
+    tcp_buf->unacked_count -= size;
+}
+
+static uint16_t tcp_buf_add_unacked_count(xtcp_buf_t* tcp_buf, uint16_t size) {
+    tcp_buf->unacked_count += size;
+    return tcp_buf->unacked_count;
+}
+
+static uint16_t tcp_buf_read_for_send(xtcp_buf_t* tcp_buf, uint8_t* to, uint16_t size) {
+    int i;
+
+    uint16_t wait_send_count = tcp_buf->data_count - tcp_buf->unacked_count;
+    size = min(size, wait_send_count);
+
+    for (i = 0; i < size; i++) {
+        *to++ = tcp_buf->data[tcp_buf->next++];
+        if (tcp_buf->next >= XTCP_CFG_RTX_BUF_SIZE) {
+            tcp_buf->next = 0;
+        }
+    }
+
+    return size;
+}
+
+static uint16_t tcp_buf_write(xtcp_buf_t* tcp_buf, uint8_t* from, uint16_t size) {
+    int i;
+
+    size = min(size, tcp_buf_free_count(tcp_buf));
+
+    for (i = 0; i < size; i++) {
+        tcp_buf->data[tcp_buf->front++] = *from++;
+        if (tcp_buf->front >= XTCP_CFG_RTX_BUF_SIZE) {
+            tcp_buf->front = 0;
+        }
+    }
+
+    tcp_buf->data_count += size;
+    return size;
+}
 
 static xnet_status_t tcp_send_reset(uint32_t remote_ack, uint16_t local_port, xip_addr_t* remote_ip, uint16_t remote_port) {
     xnet_packet_t* packet = xnet_alloc_tx_packet(sizeof(xtcp_hdr_t));
@@ -53,13 +114,25 @@ static void tcp_read_mss(xtcp_pcb_t* pcb, xtcp_hdr_t* tcp_hdr) {
 }
 
 static xnet_status_t tcp_send_flags(xtcp_pcb_t* pcb, uint8_t flags) {
+    uint16_t data_size = tcp_buf_wait_send_count(&pcb->tx_buf);
     uint16_t opt_size = (flags & XTCP_FLAG_SYN) ? 4 : 0;
-    xnet_packet_t* packet = xnet_alloc_tx_packet(opt_size + sizeof(xtcp_hdr_t));
+
+    if (pcb->remote_win) {
+        data_size = min(data_size, pcb->remote_win);
+        data_size = min(data_size, pcb->remote_mss);
+        if (data_size + opt_size > XTCP_DATA_MAX_SIZE) {
+            data_size = XTCP_DATA_MAX_SIZE - opt_size;
+        }
+    } else {
+        data_size = 0;
+    }
+
+    xnet_packet_t* packet = xnet_alloc_tx_packet(data_size + opt_size + sizeof(xtcp_hdr_t));
     xtcp_hdr_t* tcp_hdr = (xtcp_hdr_t*) packet->data;
 
     tcp_hdr->src_port = swap_order16(pcb->local_port);
     tcp_hdr->dest_port = swap_order16(pcb->remote_port);
-    tcp_hdr->seq = swap_order32(pcb->seq);
+    tcp_hdr->seq = swap_order32(pcb->next_seq);
     tcp_hdr->ack = swap_order32(pcb->ack);
     tcp_hdr->hdr_flags.all = 0;
     tcp_hdr->hdr_flags.hdr_len = (opt_size + sizeof(xtcp_hdr_t)) / 4;
@@ -75,6 +148,8 @@ static xnet_status_t tcp_send_flags(xtcp_pcb_t* pcb, uint8_t flags) {
         *(uint16_t*)(opt_data + 2) = swap_order16(XTCP_MSS_DEFAULT);
     }
 
+    tcp_buf_read_for_send(&pcb->tx_buf, packet->data + opt_size + sizeof(xtcp_hdr_t), data_size);
+
     tcp_hdr->checksum = checksum_peso(xnet_local_ip.addr, &pcb->remote_ip, XNET_PROTOCOL_TCP,
                                      (uint16_t*)packet->data, packet->length);
     tcp_hdr->checksum = tcp_hdr->checksum ? tcp_hdr->checksum : 0xFFFF;
@@ -82,8 +157,17 @@ static xnet_status_t tcp_send_flags(xtcp_pcb_t* pcb, uint8_t flags) {
     xnet_status_t status = xip_out(XNET_PROTOCOL_TCP, &pcb->remote_ip, packet);
     if (status < 0) return status;
 
+    // 告诉 buffer，这部分数据已经发出去了（虽然还没收到ACK，但已经不在“待发送”队列了）
+    if (data_size > 0) {
+        tcp_buf_add_unacked_count(&pcb->tx_buf, data_size);
+    }
+
+    pcb->remote_win -= data_size;
+    pcb->next_seq += data_size;
+
+
     if (flags & (XTCP_FLAG_SYN | XTCP_FLAG_FIN)) {
-        pcb->seq++; // SYN或FIN占用1个字节，ACK不占用
+        pcb->next_seq++; // SYN或FIN占用1个字节，ACK不占用
     }
     return XNET_OK;
 }
@@ -99,7 +183,8 @@ static xtcp_pcb_t* xtcp_pcb_alloc() {
             // 初始化状态和回调
             pcb->remote_win = XTCP_MSS_DEFAULT;
             pcb->remote_mss = XTCP_MSS_DEFAULT;
-            pcb->seq = tcp_get_init_seq();
+            pcb->next_seq = pcb->unacked_seq = tcp_get_init_seq();
+            tcp_buf_init(&pcb->tx_buf);
             return pcb;
         }
     }
@@ -135,6 +220,8 @@ static void tcp_process_accept(xtcp_pcb_t* listen_tcp, xip_addr_t* remote_ip, xt
 static void tcp_pcb_free(xtcp_pcb_t* pcb) {
     pcb->state = XTCP_STATE_FREE;
 }
+
+
 
 void xtcp_init(void) {
     // 整体清零，确保所有状态为 XTCP_STATE_FREE (0)
@@ -191,16 +278,26 @@ void xtcp_in(xip_addr_t* remote_ip, xnet_packet_t* packet) {
         case XTCP_STATE_SYN_RECVD:
             // 作为服务端，收到收到第三次握手
             if (flags & XTCP_FLAG_ACK) {
+                pcb->unacked_seq++;
                 pcb->state = XTCP_STATE_ESTABLISHED;
                 pcb->event_cb(pcb, XTCP_EVENT_CONNECTED);
             }
             break;
         case XTCP_STATE_ESTABLISHED:
+            if ((flags & XTCP_FLAG_ACK)) {
+                if ((pcb->unacked_seq < tcp_hdr->ack) && (tcp_hdr->ack <= pcb->next_seq)) {
+                    uint16_t curr_ack_size = tcp_hdr->ack - pcb->unacked_seq;
+                    tcp_buf_add_acked_count(&pcb->tx_buf, curr_ack_size);
+                    pcb->unacked_seq += curr_ack_size;
+                }
+            }
             // 作为服务端，收到第一次挥手
-            if ((flags & XTCP_FLAG_FIN) && (flags & XTCP_FLAG_ACK)) {
+            if ((flags & XTCP_FLAG_FIN)) {
                 pcb->state = XTCP_STATE_LAST_ACK;
                 pcb->ack++;
                 tcp_send_flags(pcb, XTCP_FLAG_FIN | XTCP_FLAG_ACK);
+            } else if (tcp_buf_wait_send_count(&pcb->tx_buf)) {
+                tcp_send_flags(pcb, XTCP_FLAG_ACK);
             }
             break;
         case XTCP_STATE_FIN_WAIT_1:
@@ -303,6 +400,20 @@ xnet_status_t xtcp_pcb_listen(xtcp_pcb_t* pcb) {
 
     pcb->state = XTCP_STATE_LISTEN;
     return XNET_OK;
+}
+
+int xtcp_write(xtcp_pcb_t* pcb, uint8_t* data, uint16_t size) {
+    int sended_count;
+
+    if ((pcb->state != XTCP_STATE_ESTABLISHED)) {
+        return -1;
+    }
+
+    sended_count = tcp_buf_write(&pcb->tx_buf, data, size);
+    if (sended_count) {
+        tcp_send_flags(pcb, XTCP_FLAG_ACK);
+    }
+    return sended_count;
 }
 
 // 服务端主动关闭连接

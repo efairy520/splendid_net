@@ -9,6 +9,7 @@
 
 // 1. TCP PCB 最大数量
 #define XTCP_PCB_MAX_NUM   40
+#define XTCP_CFG_RTX_BUF_SIZE 2048
 #define XTCP_FLAG_FIN    (1 << 0)
 #define XTCP_FLAG_SYN    (1 << 1)
 #define XTCP_FLAG_RST    (1 << 2)
@@ -17,6 +18,7 @@
 #define XTCP_KIND_END       0
 #define XTCP_KIND_MSS       2
 #define XTCP_MSS_DEFAULT    1460
+#define XTCP_DATA_MAX_SIZE (XNET_CFG_PACKET_MAX_SIZE - sizeof(xether_hdr_t) - sizeof(xip_hdr_t) - sizeof(xtcp_hdr_t))
 
 #pragma pack(1)
 typedef struct _xtcp_hdr_t {
@@ -37,7 +39,13 @@ typedef struct _xtcp_hdr_t {
     uint16_t checksum;
     uint16_t urgent_ptr;
 }xtcp_hdr_t;
-#pragma pack(0)
+#pragma pack()
+
+typedef struct _xtcp_buf_t {
+    uint16_t data_count, unacked_count;
+    uint16_t front, tail, next;
+    uint8_t data[XTCP_CFG_RTX_BUF_SIZE];
+} xtcp_buf_t;
 
 // 2. TCP 生命周期状态
 typedef enum _xtcp_state_e {
@@ -74,11 +82,13 @@ struct _xtcp_pcb_t {
     uint16_t               local_port;
     uint16_t               remote_port;
     xip_addr_t             remote_ip;
-    uint32_t               seq;
+    uint32_t               next_seq;
+    uint32_t               unacked_seq;
     uint32_t               ack;
     uint16_t               remote_mss;
     uint16_t               remote_win;
     xtcp_event_handler_t   event_cb;
+    xtcp_buf_t             tx_buf;
 };
 
 void xtcp_init(void);
@@ -89,6 +99,8 @@ xnet_status_t xtcp_pcb_bind(xtcp_pcb_t* pcb, uint16_t local_port);
 xtcp_pcb_t* xtcp_pcb_find(xip_addr_t* remote_ip, uint16_t remote_port, uint16_t local_port);
 xnet_status_t xtcp_pcb_listen(xtcp_pcb_t* pcb);
 xnet_status_t xtcp_pcb_close(xtcp_pcb_t* pcb);
+
+int xtcp_write(xtcp_pcb_t* pcb, uint8_t* data, uint16_t size);
 
 
 #endif //XNET_TCP_H
