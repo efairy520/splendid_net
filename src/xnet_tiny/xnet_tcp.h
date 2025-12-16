@@ -41,10 +41,14 @@ typedef struct _xtcp_hdr_t {
 }xtcp_hdr_t;
 #pragma pack()
 
+// pcb内部的缓冲区
 typedef struct _xtcp_buf_t {
-    uint16_t data_count, unacked_count;
-    uint16_t front, tail, next;
-    uint8_t data[XTCP_CFG_RTX_BUF_SIZE];
+    uint16_t data_count;                // 库存总量(包括已发未确认量)
+    uint16_t unacked_count;             // 已发未确认量
+    uint16_t front;                     // 可写入位置
+    uint16_t tail;                      // 待确认位置
+    uint16_t next;                      // 即将发送位置
+    uint8_t data[XTCP_CFG_RTX_BUF_SIZE];// 缓冲区
 } xtcp_buf_t;
 
 // 2. TCP 生命周期状态

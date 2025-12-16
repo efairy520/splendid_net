@@ -15,9 +15,11 @@ static xnet_status_t http_handler(xtcp_pcb_t* pcb, xtcp_event_t event) {
         case XTCP_EVENT_CONNECTED:
             printf("http: new client connected\n");
             // xtcp_pcb_close(pcb);
+            // 构造一个1024长度的字符串
             for (int i = 0; i < 1024; i++) {
                 tx_buffer[i] = num[i % 16];
             }
+            // 将1024长度的字符串拷贝到pcb
             xtcp_write(pcb, tx_buffer, sizeof(tx_buffer));
             break;
 
