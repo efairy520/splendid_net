@@ -16,6 +16,7 @@ static xtcp_pcb_t tcp_pcb_pool[XTCP_PCB_MAX_NUM];
 
 static void tcp_buf_init(xtcp_buf_t* tcp_buf) {
     tcp_buf->front = tcp_buf->tail = 0;
+    tcp_buf->next = 0;
     tcp_buf->data_count = tcp_buf->unacked_count = 0;
 }
 
@@ -30,7 +31,7 @@ static uint16_t tcp_buf_wait_send_count(xtcp_buf_t* tcp_buf) {
 static void tcp_buf_add_acked_count(xtcp_buf_t* tcp_buf, uint16_t size) {
     tcp_buf->tail += size;
     if (tcp_buf->tail >= XTCP_CFG_RTX_BUF_SIZE) {
-        tcp_buf->tail = 0;
+        tcp_buf->tail -= XTCP_CFG_RTX_BUF_SIZE;
     }
 
     tcp_buf->data_count -= size;
@@ -126,6 +127,7 @@ static xnet_status_t tcp_send_reset(uint32_t remote_ack, uint16_t local_port, xi
 }
 
 static void tcp_read_mss(xtcp_pcb_t* pcb, xtcp_hdr_t* tcp_hdr) {
+    // 真实长度 - 理论长度 = 选项长度
     uint16_t opt_len = tcp_hdr->hdr_flags.hdr_len * 4 - sizeof(xtcp_hdr_t);
 
     if (opt_len == 0) {
@@ -142,7 +144,7 @@ static void tcp_read_mss(xtcp_pcb_t* pcb, xtcp_hdr_t* tcp_hdr) {
         }
     }
 }
-
+// 通用发送数据方法
 static xnet_status_t tcp_send_segment(xtcp_pcb_t* pcb, uint8_t flags) {
     uint16_t data_size = tcp_buf_wait_send_count(&pcb->tx_buf);
     // SYN 包需要额外4字节的MSS选项空间
@@ -221,11 +223,11 @@ static xtcp_pcb_t* xtcp_pcb_zalloc() {
 
 static void xtcp_pcb_init(xtcp_pcb_t* pcb) {
     // 基础配置
-    pcb->remote_win = XTCP_MSS_DEFAULT;
+    pcb->remote_win = XTCP_WIN_DEFAULT;
     pcb->remote_mss = XTCP_MSS_DEFAULT;
 
     // 序列号随机化
-    pcb->next_seq = tcp_get_init_seq();
+    pcb->next_seq = tcp_get_init_seq(); // 当前流水号
     pcb->unacked_seq = pcb->next_seq; // 初始时，未确认的就是当前的
 
     // 缓冲区初始化
@@ -233,37 +235,40 @@ static void xtcp_pcb_init(xtcp_pcb_t* pcb) {
     tcp_buf_init(&pcb->rx_buf);
 }
 
-static void tcp_process_accept(xtcp_pcb_t* listen_tcp, xip_addr_t* remote_ip, xtcp_hdr_t* tcp_hdr) {
-    uint16_t hdr_flags = tcp_hdr->hdr_flags.all;
-
-    if (hdr_flags & XTCP_FLAG_SYN) {
-        xtcp_pcb_t* child_pcb = xtcp_pcb_zalloc();
-        if (!child_pcb) return;
-
-        child_pcb->state = XTCP_STATE_SYN_RECVD; // 收到了SYN请求
-        child_pcb->event_cb = listen_tcp->event_cb;
-        child_pcb->local_port = listen_tcp->local_port;
-        child_pcb->remote_port = tcp_hdr->src_port;
-        child_pcb->remote_ip = *remote_ip;
-        child_pcb->ack = tcp_hdr->seq + 1; // 握手请求，载荷是0，但SYN占用一个字节
-        child_pcb->remote_win = tcp_hdr->window;
-
-        tcp_read_mss(child_pcb, tcp_hdr);
-        // 发送SYN + ACK
-        xnet_status_t status = tcp_send_segment(child_pcb, XTCP_FLAG_SYN | XTCP_FLAG_ACK);
-        if (status < 0) {
-            (child_pcb);
-        }
-    } else {
-        tcp_send_reset(tcp_hdr->seq, listen_tcp->local_port, remote_ip, tcp_hdr->src_port);
-    }
-}
-
 static void tcp_pcb_free(xtcp_pcb_t* pcb) {
     pcb->state = XTCP_STATE_FREE;
 }
 
+// 构造child pcb，接受第一次握手数据
+static void tcp_process_accept(xtcp_pcb_t* listen_pcb, xip_addr_t* remote_ip, xtcp_hdr_t* tcp_hdr) {
+    uint16_t hdr_flags = tcp_hdr->hdr_flags.all;
 
+    // 只有 SYN 才能触发 Accept 逻辑
+    if (!(hdr_flags & XTCP_FLAG_SYN)) {
+        tcp_send_reset(tcp_hdr->seq, listen_pcb->local_port, remote_ip, tcp_hdr->src_port);
+        return;
+    }
+
+    xtcp_pcb_t* child_pcb = xtcp_pcb_zalloc();
+    if (!child_pcb) return;
+
+    child_pcb->state = XTCP_STATE_SYN_RECVD;
+    child_pcb->event_cb = listen_pcb->event_cb; // 继承listen_pcb的回调，应用层传入http_handler
+    child_pcb->local_port = listen_pcb->local_port; // 继承listen_pcb的端口，应用层传入80
+    child_pcb->remote_ip = *remote_ip; // IP层传入
+    child_pcb->remote_port = tcp_hdr->src_port;
+    child_pcb->remote_win = tcp_hdr->window;
+    child_pcb->ack = tcp_hdr->seq + 1; // SYN占用一个字节
+
+    // 解析选项中的MSS
+    tcp_read_mss(child_pcb, tcp_hdr);
+
+    // 发送 SYN + ACK
+    xnet_status_t status = tcp_send_segment(child_pcb, XTCP_FLAG_SYN | XTCP_FLAG_ACK);
+    if (status < 0) {
+        tcp_pcb_free(child_pcb);
+    }
+}
 
 void xtcp_init(void) {
     // 整体清零，确保所有状态为 XTCP_STATE_FREE (0)
@@ -287,6 +292,7 @@ void xtcp_in(xip_addr_t* remote_ip, xnet_packet_t* packet) {
         }
     }
 
+    // 大小端转换
     tcp_hdr->src_port = swap_order16(tcp_hdr->src_port);
     tcp_hdr->dest_port = swap_order16(tcp_hdr->dest_port);
     tcp_hdr->hdr_flags.all = swap_order16(tcp_hdr->hdr_flags.all);
@@ -294,12 +300,12 @@ void xtcp_in(xip_addr_t* remote_ip, xnet_packet_t* packet) {
     tcp_hdr->ack = swap_order32(tcp_hdr->ack);
     tcp_hdr->window = swap_order16(tcp_hdr->window);
 
+    // 查询五元组
     xtcp_pcb_t* pcb = xtcp_pcb_find(remote_ip, tcp_hdr->src_port, tcp_hdr->dest_port);
     if (pcb == NULL) {
         tcp_send_reset(tcp_hdr->seq + 1, tcp_hdr->dest_port, remote_ip, tcp_hdr->src_port);
         return;
     }
-    pcb->remote_win = tcp_hdr->window;
 
     // 收到第一次握手
     if (pcb->state == XTCP_STATE_LISTEN) {
@@ -320,9 +326,14 @@ void xtcp_in(xip_addr_t* remote_ip, xnet_packet_t* packet) {
         case XTCP_STATE_SYN_RECVD:
             // 作为服务端，收到收到第三次握手
             if (flags & XTCP_FLAG_ACK) {
-                pcb->unacked_seq++;
-                pcb->state = XTCP_STATE_ESTABLISHED;
-                pcb->event_cb(pcb, XTCP_EVENT_CONNECTED);
+                // 确保对方确认的是我发的那个 SYN
+                if (tcp_hdr->ack == pcb->next_seq) {
+                    pcb->unacked_seq++; // 滑动窗口，确认第二次握手的请求，已收到
+                    pcb->state = XTCP_STATE_ESTABLISHED;
+                    pcb->event_cb(pcb, XTCP_EVENT_CONNECTED); // 通知应用层
+                } else {
+                    // ACK 号不对？可能是旧包，或者是攻击，忽略或发 RST
+                }
             }
             break;
         case XTCP_STATE_ESTABLISHED:

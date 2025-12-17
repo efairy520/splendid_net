@@ -11,6 +11,7 @@
 #define XNET_IP_DEFAULT_TTL                 64  // 缺省的IP包TTL值
 
 #pragma pack(1)
+// IP头部，20个字节
 typedef struct _xip_hdr_t {
     uint8_t hdr_len : 4;                        // 头部长度(4字节为单位),低四位
     uint8_t version : 4;                        // 版本号，高四位

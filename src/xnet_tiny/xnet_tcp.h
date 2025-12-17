@@ -18,9 +18,11 @@
 #define XTCP_KIND_END       0
 #define XTCP_KIND_MSS       2
 #define XTCP_MSS_DEFAULT    1460
+#define XTCP_WIN_DEFAULT    65535
 #define XTCP_DATA_MAX_SIZE (XNET_CFG_PACKET_MAX_SIZE - sizeof(xether_hdr_t) - sizeof(xip_hdr_t) - sizeof(xtcp_hdr_t))
 
 #pragma pack(1)
+// TCP头部 20个字节（可能还有12字节的选项数据）
 typedef struct _xtcp_hdr_t {
     uint16_t src_port;
     uint16_t dest_port;
@@ -31,7 +33,7 @@ typedef struct _xtcp_hdr_t {
         struct {
             uint16_t flags : 6;       // 低6位
             uint16_t reserved : 6;    // 中间6位
-            uint16_t hdr_len : 4;     // 高4位
+            uint16_t hdr_len : 4;     // 高4位 （乘以4）
         };
     }hdr_flags;
 

@@ -82,16 +82,16 @@ void xip_in(xnet_packet_t* packet) {
     }
 
     // 长度要求检查
-    uint32_t header_size = ip_hdr->hdr_len * 4;
-    uint32_t total_length = swap_order16(ip_hdr->total_len);
-    if ((header_size < sizeof(xip_hdr_t)) || ((total_length < header_size) || (packet->length < total_length))) {
+    uint32_t ip_hdr_len = ip_hdr->hdr_len * 4;
+    uint32_t ip_total_len = swap_order16(ip_hdr->total_len);
+    if ((ip_hdr_len < sizeof(xip_hdr_t)) || ((ip_total_len < ip_hdr_len) || (packet->length < ip_total_len))) {
         return;
     }
 
     // 校验和要求检查
     uint16_t pre_checksum = ip_hdr->hdr_checksum; //取出原校验和
     ip_hdr->hdr_checksum = 0; //校验和本身也会参与运算，先归零
-    if (pre_checksum != checksum16((uint16_t*)ip_hdr, header_size, 0, 1)) {
+    if (pre_checksum != checksum16((uint16_t*)ip_hdr, ip_hdr_len, 0, 1)) {
         return;
     }
     ip_hdr->hdr_checksum = pre_checksum; //恢复校验和
@@ -106,10 +106,10 @@ void xip_in(xnet_packet_t* packet) {
         case XNET_PROTOCOL_UDP:
             if (packet->length >= sizeof(xudp_hdr_t)) {
                 // 这里还没有移除ip头部，所以需要手动后移
-                xudp_hdr_t* udp_hdr = (xudp_hdr_t*)(packet->data + header_size);
+                xudp_hdr_t* udp_hdr = (xudp_hdr_t*)(packet->data + ip_hdr_len);
                 xudp_socket_t* udp_socket = xudp_find_socket(swap_order16(udp_hdr->dest_port));
                 if (udp_socket) {
-                    remove_header(packet, header_size);
+                    remove_header(packet, ip_hdr_len);
                     xudp_in(udp_socket, &src_ip, packet);
                 } else {
                     xicmp_dest_unreach(XICMP_CODE_PORT_UNREACH, ip_hdr);
@@ -117,13 +117,13 @@ void xip_in(xnet_packet_t* packet) {
             }
             break;
         case XNET_PROTOCOL_TCP:
-            // 无负载的TCP包，有效数据只有54，驱动会在末尾填充到60，所以将length截断成54
-            truncate_packet(packet, total_length);
-            remove_header(packet, header_size);
+            // 无负载的TCP包，有效数据只有54，驱动会在末尾填充到60，所以将packet->length截断成54
+            truncate_packet(packet, ip_total_len);
+            remove_header(packet, ip_hdr_len);
             xtcp_in(&src_ip, packet);
             break;
         case XNET_PROTOCOL_ICMP:
-            remove_header(packet, header_size);
+            remove_header(packet, ip_hdr_len);
             xicmp_in(&src_ip, packet);
             break;
         default:
