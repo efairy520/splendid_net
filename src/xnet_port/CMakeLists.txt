@@ -13,7 +13,7 @@ else()
 endif()
 
 # 2. 必须先创建目标
-add_library(xnet_port OBJECT ${PORT_SRCS})
+add_library(xnet_port STATIC ${PORT_SRCS})
 
 # 3. 统一设置通用头文件路径
 target_include_directories(xnet_port

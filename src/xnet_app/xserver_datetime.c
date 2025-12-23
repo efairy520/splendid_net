@@ -1,6 +1,6 @@
 ﻿#include "xserver_datetime.h"
 #include <time.h>
-#include <string.h>
+#include "xnet_tiny.h"
 
 #include "xnet_udp.h"
 
