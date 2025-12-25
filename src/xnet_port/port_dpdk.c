@@ -21,7 +21,7 @@ xnet_status_t xnet_driver_open(uint8_t* mac_addr) {
 
 xnet_status_t xnet_driver_send(xnet_packet_t* packet) {
     // 直接把协议栈的数据透传给驱动
-    int ret = dpdk_device_send(packet->data, packet->length);
+    int ret = dpdk_device_send(packet->data, packet->len);
     if (ret > 0) {
         return XNET_OK;
     }
@@ -42,7 +42,7 @@ xnet_status_t xnet_driver_read(xnet_packet_t** packet) {
 
         // 3. 填充数据
         memcpy(r_packet->data, rx_buffer, len);
-        r_packet->length = len;
+        r_packet->len = len;
 
         *packet = r_packet;
         return XNET_OK;

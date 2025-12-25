@@ -24,7 +24,7 @@ const xip_addr_t xnet_local_ip = XNET_CFG_DEFAULT_IP;
  */
 void add_header(xnet_packet_t* packet, uint16_t header_size) {
     packet->data -= header_size;
-    packet->length += header_size;
+    packet->len += header_size;
 }
 
 /**
@@ -32,14 +32,14 @@ void add_header(xnet_packet_t* packet, uint16_t header_size) {
  */
 void remove_header(xnet_packet_t* packet, uint16_t header_size) {
     packet->data += header_size;
-    packet->length -= header_size;
+    packet->len -= header_size;
 }
 
 /**
  * 将包的长度截断为size大小
  */
 void truncate_packet(xnet_packet_t* packet, uint16_t size) {
-    packet->length = min(packet->length, size);
+    packet->len = min(packet->len, size);
 }
 
 /**
@@ -48,7 +48,7 @@ void truncate_packet(xnet_packet_t* packet, uint16_t size) {
  */
 xnet_packet_t* xnet_alloc_tx_packet(uint16_t size) {
     tx_packet.data = tx_packet.buffer + XNET_CFG_PACKET_MAX_SIZE - size;
-    tx_packet.length = size;
+    tx_packet.len = size;
     return &tx_packet;
 }
 
@@ -58,7 +58,7 @@ xnet_packet_t* xnet_alloc_tx_packet(uint16_t size) {
  */
 xnet_packet_t* xnet_alloc_rx_packet(uint16_t size) {
     rx_packet.data = rx_packet.buffer;
-    rx_packet.length = size;
+    rx_packet.len = size;
     return &rx_packet;
 }
 

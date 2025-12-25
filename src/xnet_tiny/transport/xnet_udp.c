@@ -20,7 +20,7 @@ void xudp_in(xudp_socket_t* socket, xip_addr_t* src_ip, xnet_packet_t* packet)
     uint16_t src_port;
 
     // 1. 长度校验
-    if ((packet->length < sizeof(xudp_hdr_t)) || (packet->length < swap_order16(udp_hdr->total_len))) {
+    if ((packet->len < sizeof(xudp_hdr_t)) || (packet->len < swap_order16(udp_hdr->total_len))) {
         return; // 长度校验失败，丢弃数据包
     }
 
@@ -65,9 +65,9 @@ xnet_status_t xudp_send_to(xudp_socket_t* socket, xip_addr_t* dest_ip, uint16_t 
     udp_hdr = (xudp_hdr_t*)packet->data;
     udp_hdr->src_port = swap_order16(socket->local_port);
     udp_hdr->dest_port = swap_order16(dest_port);
-    udp_hdr->total_len = swap_order16(packet->length);
+    udp_hdr->total_len = swap_order16(packet->len);
     udp_hdr->checksum = 0;
-    checksum = checksum_peso(&xnet_local_ip, dest_ip, XNET_PROTOCOL_UDP, (uint16_t*)packet->data, packet->length);
+    checksum = checksum_peso(&xnet_local_ip, dest_ip, XNET_PROTOCOL_UDP, (uint16_t*)packet->data, packet->len);
     udp_hdr->checksum = (checksum == 0) ? 0xFFFF : checksum;
     return xip_out(XNET_PROTOCOL_UDP, dest_ip, packet);
 }

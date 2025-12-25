@@ -1,41 +1,73 @@
-//
-// Created by efairy520 on 2025/12/12.
-//
-
 #include "xserver_http.h"
 #include <stdio.h>
 #include "xnet_tcp.h"
 
-static uint8_t tx_buffer[1024];
+// 准备 4096 字节的数据 (故意比 2048 缓冲区大)
+#define TOTAL_SEND_SIZE 4096
+static uint8_t tx_buffer[TOTAL_SEND_SIZE];
 
+// 记录发送进度的变量
+static int sent_offset = 0;
+
+// 尝试发送数据
+static void try_send_data(xtcp_pcb_t* pcb) {
+    // 算出还剩多少没发
+    int remaining = TOTAL_SEND_SIZE - sent_offset;
+    
+    if (remaining <= 0) {
+        return; // 发完了
+    }
+
+    // 将剩余的数据写入 TCP 缓冲区
+    int written = xtcp_write(pcb, tx_buffer + sent_offset, remaining);
+
+    // 更新进度条
+    if (written > 0) {
+        sent_offset += written;
+        printf(">> Progress: Sent %d bytes, Total: %d / %d\n", written, sent_offset, TOTAL_SEND_SIZE);
+    } else {
+        printf(">> Buffer full! Waiting for XTCP_EVENT_SENT...\n");
+    }
+
+    // 如果全部发完，可以考虑关闭连接（可选）
+    if (sent_offset >= TOTAL_SEND_SIZE) {
+        printf(">> All data sent successfully!\n");
+        // xtcp_pcb_close(pcb); 
+    }
+}
+
+// 应用层回调方法
 static xnet_status_t http_handler(xtcp_pcb_t* pcb, xtcp_event_t event) {
+    // 初始化测试数据 "0123..."
     static char num[] = "0123456789ABCDEF";
+    // 只初始化一次数据
+    static int data_inited = 0;
+    if (!data_inited) {
+        for (int i = 0; i < TOTAL_SEND_SIZE; i++) {
+            tx_buffer[i] = num[i % 16];
+        }
+        data_inited = 1;
+    }
 
     switch (event) {
         case XTCP_EVENT_CONNECTED:
-            printf("http: new client connected\n");
-            // xtcp_pcb_close(pcb);
-            /*
-            // 构造一个1024长度的字符串
-            for (int i = 0; i < 1024; i++) {
-                tx_buffer[i] = num[i % 16];
-            }
-            // 将1024长度的字符串拷贝到pcb
-            xtcp_write(pcb, tx_buffer, sizeof(tx_buffer));
-            */
+            printf("http: client connected. Start sending %d bytes...\n", TOTAL_SEND_SIZE);
+            sent_offset = 0; // 【重置进度】非常重要！
+            
+            // 连接刚建立，缓冲区肯定是空的，立刻尝试发第一波
+            try_send_data(pcb);
             break;
+
+        case XTCP_EVENT_SENT:
+            // 【核心】：收到这个事件，说明对方回 ACK 了，缓冲区有空位了
+            // 赶紧接着发剩下的！
+            try_send_data(pcb);
+            break;
+
         case XTCP_EVENT_DATA_RECEIVED:
-            // 收到数据，直接echo
-            /*
-            uint8_t* data = tx_buffer;
-            uint16_t read_size = xtcp_read(pcb, tx_buffer, sizeof(tx_buffer));
-            while (read_size) {
-                uint16_t curr_size = xtcp_write(pcb, data, read_size);
-                data += curr_size;
-                read_size -= curr_size;
-            }
-            */
+            // 暂时不管接收
             break;
+
         case XTCP_EVENT_CLOSED:
             printf("http: connection closed\n");
             break;

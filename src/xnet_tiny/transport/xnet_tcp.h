@@ -45,11 +45,9 @@ typedef struct _xtcp_hdr_t {
 
 // pcb内部的缓冲区
 typedef struct _xtcp_buf_t {
-    uint16_t data_count;                // 库存总量(包括已发未确认量)
-    uint16_t unacked_count;             // 已发未确认量
-    uint16_t front;                     // 可写入位置
-    uint16_t tail;                      // 待确认位置
-    uint16_t next;                      // 即将发送位置
+    uint16_t write_idx;                 // 写入位置
+    uint16_t ack_idx;                   // 确认位置
+    uint16_t send_idx;                  // 发送位置
     uint8_t data[XTCP_CFG_RTX_BUF_SIZE];// 缓冲区
 } xtcp_buf_t;
 
@@ -72,6 +70,7 @@ typedef enum _xtcp_state_e {
 typedef enum _xtcp_event_e {
     XTCP_EVENT_CONNECTED,       // 连接成功
     XTCP_EVENT_DATA_RECEIVED,   // 收到数据
+    XTCP_EVENT_SENT,            // 数据已确认，缓冲区有空位
     XTCP_EVENT_CLOSED,          // 连接断开
     XTCP_EVENT_ABORTED,         // 连接异常终止 (RST)
 } xtcp_event_t;
@@ -88,9 +87,9 @@ struct _xtcp_pcb_t {
     uint16_t               local_port;
     uint16_t               remote_port;
     xip_addr_t             remote_ip;
-    uint32_t               next_seq;
-    uint32_t               unacked_seq;
-    uint32_t               ack;
+    uint32_t               snd_nxt;         // 下一个发送序号
+    uint32_t               snd_una;         // 已发送未确认的编号
+    uint32_t               rcv_nxt;         // 下一个收到的序列号
     uint16_t               remote_mss;
     uint16_t               remote_win;
     xtcp_event_handler_t   event_cb;
@@ -107,8 +106,8 @@ xtcp_pcb_t* xtcp_pcb_find(xip_addr_t* remote_ip, uint16_t remote_port, uint16_t 
 xnet_status_t xtcp_pcb_listen(xtcp_pcb_t* pcb);
 xnet_status_t xtcp_pcb_close(xtcp_pcb_t* pcb);
 
-int xtcp_write(xtcp_pcb_t* pcb, uint8_t* data, uint16_t size);
-int xtcp_read(xtcp_pcb_t* pcb, uint8_t* data, uint16_t size);
+int xtcp_write(xtcp_pcb_t* pcb, uint8_t* src, uint16_t len);
+int xtcp_read(xtcp_pcb_t* pcb, uint8_t* dest, uint16_t len);
 
 
 #endif //XNET_TCP_H

@@ -13,6 +13,7 @@
 
 // 全局唯一的本机 IP 地址
 extern const xip_addr_t xnet_local_ip;
+extern uint8_t xnet_local_mac[XNET_MAC_ADDR_SIZE];
 
 // 1. 内存管理与包操作 (Buffer Management)
 

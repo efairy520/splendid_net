@@ -68,7 +68,7 @@ typedef struct _xip_addr_t {
 // 3. 核心数据包结构 (最重要的结构体)
 // 网络数据包，大端，所见即所得
 typedef struct _xnet_packet_t {
-    uint16_t length;                                // 包中有效数据大小
+    uint16_t len;                                // 包中有效数据大小
     uint8_t* data;                                  // 包的数据起始地址 (动态变动)
     uint8_t buffer[XNET_CFG_PACKET_MAX_SIZE];       // 物理缓冲区
 } xnet_packet_t;

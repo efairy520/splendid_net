@@ -12,95 +12,140 @@
 // pcb数组，程序启动自动创建，属性全部为0
 static xtcp_pcb_t tcp_pcb_pool[XTCP_PCB_MAX_NUM];
 
+// 计算两个指针之间的距离
+static uint16_t tcp_buf_dist(uint16_t from, uint16_t to) {
+    // from是数据的开始，to是数据的结束
+    return (to >= from) ? (to - from) : (XTCP_CFG_RTX_BUF_SIZE + to - from);
+}
+
 static void tcp_buf_init(xtcp_buf_t* tcp_buf) {
-    tcp_buf->front = tcp_buf->tail = 0;
-    tcp_buf->next = 0;
-    tcp_buf->data_count = tcp_buf->unacked_count = 0;
+    tcp_buf->write_idx = 0;
+    tcp_buf->ack_idx = 0;
+    tcp_buf->send_idx = 0;
 }
 
+// 计算缓冲区当前总占用量 (包含已发未确认 + 待发送)
+static uint16_t tcp_buf_used_count(xtcp_buf_t* tcp_buf) {
+    // 也就是：从 ack_idx 到 write_idx 的距离
+    return tcp_buf_dist(tcp_buf->ack_idx, tcp_buf->write_idx);
+}
+
+// 计算剩余空闲空间
 static uint16_t tcp_buf_free_count(xtcp_buf_t* tcp_buf) {
-    return XTCP_CFG_RTX_BUF_SIZE - tcp_buf->data_count;
+    // 总容量 - 已用容量
+    // 已用容量 = dist(ack_idx, write_idx)
+    // 总容量 = 缓冲区长度 - 1（因为永远都要空一格）
+    return (XTCP_CFG_RTX_BUF_SIZE - 1) - tcp_buf_used_count(tcp_buf);
 }
 
+// 计算有多少数据等待发送,绿色区域
 static uint16_t tcp_buf_wait_send_count(xtcp_buf_t* tcp_buf) {
-    return tcp_buf->data_count - tcp_buf->unacked_count;
+    // 从 send_idx 到 write_idx 的距离
+    return tcp_buf_dist(tcp_buf->send_idx, tcp_buf->write_idx);
 }
 
-static void tcp_buf_add_acked_count(xtcp_buf_t* tcp_buf, uint16_t size) {
-    tcp_buf->tail += size;
-    if (tcp_buf->tail >= XTCP_CFG_RTX_BUF_SIZE) {
-        tcp_buf->tail -= XTCP_CFG_RTX_BUF_SIZE;
+// 收到 ACK，释放空间
+static void tcp_buf_advance_ack(xtcp_buf_t* tcp_buf, uint16_t len) {
+    // 本质是：向前移动 ack_idx 指针
+    tcp_buf->ack_idx += len;
+    // 处理回绕
+    if (tcp_buf->ack_idx >= XTCP_CFG_RTX_BUF_SIZE) {
+        tcp_buf->ack_idx -= XTCP_CFG_RTX_BUF_SIZE;
     }
-
-    tcp_buf->data_count -= size;
-    tcp_buf->unacked_count -= size;
 }
 
-static uint16_t tcp_buf_add_unacked_count(xtcp_buf_t* tcp_buf, uint16_t size) {
-    tcp_buf->unacked_count += size;
-    return tcp_buf->unacked_count;
+// 数据已发送给网卡，标记为"已发未确认"
+static void tcp_buf_advance_send(xtcp_buf_t* tcp_buf, uint16_t len) {
+    // 本质是：向前移动 send_idx 指针
+    tcp_buf->send_idx += len;
+    // 处理回绕
+    if (tcp_buf->send_idx >= XTCP_CFG_RTX_BUF_SIZE) {
+        tcp_buf->send_idx -= XTCP_CFG_RTX_BUF_SIZE;
+    }
 }
 
-static uint16_t tcp_buf_read_for_send(xtcp_buf_t* tcp_buf, uint8_t* to, uint16_t size) {
-    int i;
+// 从 TCP 发送缓冲区中读取数据拷贝到 packet 中
+// 注意：此函数不修改 tcp_buf 的任何指针，仅仅是 Copy
+static void tcp_buf_read_for_send(xtcp_buf_t* tcp_buf, uint8_t* dest, uint16_t len) {
+    // 使用局部变量 cursor，不触碰 tcp_buf->send_idx
+    uint16_t cursor = tcp_buf->send_idx;
 
-    uint16_t wait_send_count = tcp_buf->data_count - tcp_buf->unacked_count;
-    size = min(size, wait_send_count);
-    // 移动to指针
-    for (i = 0; i < size; i++) {
-        *to++ = tcp_buf->data[tcp_buf->next++];
-        if (tcp_buf->next >= XTCP_CFG_RTX_BUF_SIZE) {
-            tcp_buf->next = 0;
+    for (uint16_t i = 0; i < len; i++) {
+        // 1. 搬运数据
+        dest[i] = tcp_buf->data[cursor];
+
+        // 2. 移动局部光标
+        cursor++;
+
+        // 3. 处理局部光标的回绕
+        if (cursor >= XTCP_CFG_RTX_BUF_SIZE) {
+            cursor = 0;
+        }
+    }
+}
+
+// 将数据写入到tcp
+static uint16_t tcp_buf_write(xtcp_buf_t* tcp_buf, uint8_t* src, uint16_t len) {
+    // 待写入数据与剩余空间，取最小值
+    int write_len = min(len, tcp_buf_free_count(tcp_buf));
+
+    // 一对一复制，移动write_idx指针（下个可写入位置）
+    for (int i = 0; i < write_len; i++) {
+        tcp_buf->data[tcp_buf->write_idx++] = *src++;
+        if (tcp_buf->write_idx >= XTCP_CFG_RTX_BUF_SIZE) {
+            tcp_buf->write_idx = 0; //遇到边缘回绕
         }
     }
 
-    return size;
+    return write_len;
 }
 
-// 将输入写入到pcb的环形缓冲区
-static uint16_t tcp_buf_write(xtcp_buf_t* tcp_buf, uint8_t* from, uint16_t size) {
-    int i;
-
-    size = min(size, tcp_buf_free_count(tcp_buf));
-
-    for (i = 0; i < size; i++) {
-        tcp_buf->data[tcp_buf->front++] = *from++;
-        if (tcp_buf->front >= XTCP_CFG_RTX_BUF_SIZE) {
-            tcp_buf->front = 0;
-        }
-    }
-
-    tcp_buf->data_count += size;
-    return size;
-}
-
-static uint16_t tcp_recv(xtcp_pcb_t* pcb, uint8_t flags, uint8_t* from, uint16_t size) {
+static uint16_t tcp_recv(xtcp_pcb_t* pcb, uint8_t flags, uint8_t* src, uint16_t len) {
     // 1. 将收到的 payload 写入接收缓冲区 (rx_buf)
-    uint16_t read_size = tcp_buf_write(&pcb->rx_buf, from, size);
+    uint16_t read_len = tcp_buf_write(&pcb->rx_buf, src, len);
 
     // 2. 累加 ACK 号，准备下次告诉对方我收到了多少
-    pcb->ack += read_size;
+    pcb->rcv_nxt += read_len;
 
     // 3. 如果收到 FIN 或 SYN，也要消耗一个序列号
     if (flags & (XTCP_FLAG_FIN | XTCP_FLAG_SYN)) {
-        pcb->ack++;
+        pcb->rcv_nxt++;
     }
-    return read_size;
+    return read_len;
 }
 
-static uint16_t tcp_buf_read(xtcp_buf_t* tcp_buf, uint8_t* to, uint16_t size) {
-    int i;
+// 从 TCP 接收缓冲区读取数据 (消费数据)
+// 参数 dest: 目标缓冲区 (Destination)
+// 参数 len:  想读取的长度 (Length)
+static uint16_t tcp_buf_read(xtcp_buf_t* tcp_buf, uint8_t* dest, uint16_t len) {
 
-    size = min(size, tcp_buf->data_count);
-    for (i = 0; i < size; i++) {
-        *to++ = tcp_buf->data[tcp_buf->tail++];
-        if (tcp_buf->tail >= XTCP_CFG_RTX_BUF_SIZE) {
-            tcp_buf->tail = 0;
+    // 1. 获取库存量
+    uint16_t used = tcp_buf_used_count(tcp_buf);
+
+    // 2. 裁切长度：实际能读的长度 (Actual Read Length)
+    uint16_t read_len = (len > used) ? used : len;
+
+    // 3. 循环搬运
+    //    类型修正：用 uint16_t 替代 int
+    for (uint16_t i = 0; i < read_len; i++) {
+
+        // Step A: 搬运数据 (Buffer -> Destination)
+        // 清晰：把缓冲区当前 ack 指向的数据，给到目标
+        *dest = tcp_buf->data[tcp_buf->ack_idx];
+
+        // Step B: 移动目标指针
+        dest++;
+
+        // Step C: 移动缓冲区消费指针 (ack_idx)
+        tcp_buf->ack_idx++;
+
+        // Step D: 处理回绕
+        if (tcp_buf->ack_idx >= XTCP_CFG_RTX_BUF_SIZE) {
+            tcp_buf->ack_idx = 0;
         }
     }
 
-    tcp_buf->data_count -= size;
-    return size;
+    return read_len;
 }
 
 static xnet_status_t tcp_send_reset(uint32_t remote_ack, uint16_t local_port, xip_addr_t* remote_ip, uint16_t remote_port) {
@@ -119,7 +164,7 @@ static xnet_status_t tcp_send_reset(uint32_t remote_ack, uint16_t local_port, xi
     tcp_hdr->checksum = 0;
     tcp_hdr->urgent_ptr = 0;
 
-    tcp_hdr->checksum = checksum_peso(&xnet_local_ip, remote_ip, XNET_PROTOCOL_TCP, (uint16_t*)packet->data, packet->length);
+    tcp_hdr->checksum = checksum_peso(&xnet_local_ip, remote_ip, XNET_PROTOCOL_TCP, (uint16_t*)packet->data, packet->len);
     tcp_hdr->checksum = tcp_hdr->checksum ? tcp_hdr->checksum : 0xFFFF;
     return xip_out(XNET_PROTOCOL_TCP, remote_ip, packet);
 }
@@ -144,32 +189,32 @@ static void tcp_read_mss(xtcp_pcb_t* pcb, xtcp_hdr_t* tcp_hdr) {
 }
 // 通用发送数据方法
 static xnet_status_t tcp_send_segment(xtcp_pcb_t* pcb, uint8_t flags) {
-    uint16_t data_size = tcp_buf_wait_send_count(&pcb->tx_buf);
+    uint16_t payload_len = tcp_buf_wait_send_count(&pcb->tx_buf);
     // SYN 包需要额外4字节的MSS选项空间
-    uint16_t opt_size = (flags & XTCP_FLAG_SYN) ? 4 : 0;
+    uint16_t opt_len = (flags & XTCP_FLAG_SYN) ? 4 : 0;
 
     if (pcb->remote_win) {
-        data_size = min(data_size, pcb->remote_win);    //data_size不能超过对方窗口
-        data_size = min(data_size, pcb->remote_mss);    //data_size不能超过对方单包最大限制
-        if (data_size + opt_size > XTCP_DATA_MAX_SIZE) {//data_size不能超过以太网剩余限制
-            data_size = XTCP_DATA_MAX_SIZE - opt_size;
+        payload_len = min(payload_len, pcb->remote_win);    //data_size不能超过对方窗口
+        payload_len = min(payload_len, pcb->remote_mss);    //data_size不能超过对方单包最大限制
+        if (payload_len + opt_len > XTCP_DATA_MAX_SIZE) {//data_size不能超过以太网剩余限制,1460
+            payload_len = XTCP_DATA_MAX_SIZE - opt_len;
         }
     } else {
-        data_size = 0;
+        payload_len = 0;
     }
 
-    xnet_packet_t* packet = xnet_alloc_tx_packet(data_size + opt_size + sizeof(xtcp_hdr_t));
+    xnet_packet_t* packet = xnet_alloc_tx_packet(payload_len + opt_len + sizeof(xtcp_hdr_t));
     xtcp_hdr_t* tcp_hdr = (xtcp_hdr_t*) packet->data;
 
     tcp_hdr->src_port = swap_order16(pcb->local_port);
     tcp_hdr->dest_port = swap_order16(pcb->remote_port);
-    tcp_hdr->seq = swap_order32(pcb->next_seq); //next_seq由上一次发送的时候确定
-    tcp_hdr->ack = swap_order32(pcb->ack); // 由上一次收到的seq确定
+    tcp_hdr->seq = swap_order32(pcb->snd_nxt); //由上一次发送的seq确定
+    tcp_hdr->ack = swap_order32(pcb->rcv_nxt); //由上一次收到的seq确定
     tcp_hdr->hdr_flags.all = 0;
-    tcp_hdr->hdr_flags.hdr_len = (opt_size + sizeof(xtcp_hdr_t)) / 4;
+    tcp_hdr->hdr_flags.hdr_len = (opt_len + sizeof(xtcp_hdr_t)) / 4;
     tcp_hdr->hdr_flags.flags = flags;
     tcp_hdr->hdr_flags.all = swap_order16(tcp_hdr->hdr_flags.all);
-    tcp_hdr->window = swap_order16(tcp_buf_free_count(&pcb->rx_buf)); // 告诉对方，我现在还能收 ? 字节的数据
+    tcp_hdr->window = swap_order16(tcp_buf_free_count(&pcb->rx_buf));
     tcp_hdr->checksum = 0;
     tcp_hdr->urgent_ptr = 0;
     if (flags & XTCP_FLAG_SYN) {
@@ -178,27 +223,27 @@ static xnet_status_t tcp_send_segment(xtcp_pcb_t* pcb, uint8_t flags) {
         opt_data[1] = 4;
         *(uint16_t*)(opt_data + 2) = swap_order16(XTCP_MSS_DEFAULT);
     }
-    // 将pcb环形缓冲区的数据拷贝到packet
-    tcp_buf_read_for_send(&pcb->tx_buf, packet->data + opt_size + sizeof(xtcp_hdr_t), data_size);
+    // 将pcb发送缓冲区的数据拷贝到packet
+    tcp_buf_read_for_send(&pcb->tx_buf, packet->data + opt_len + sizeof(xtcp_hdr_t), payload_len);
 
     tcp_hdr->checksum = checksum_peso(&xnet_local_ip, &pcb->remote_ip, XNET_PROTOCOL_TCP,
-                                     (uint16_t*)packet->data, packet->length);
+                                     (uint16_t*)packet->data, packet->len);
     tcp_hdr->checksum = tcp_hdr->checksum ? tcp_hdr->checksum : 0xFFFF;
 
     xnet_status_t status = xip_out(XNET_PROTOCOL_TCP, &pcb->remote_ip, packet);
     if (status < 0) return status;
 
-    // 告诉 buffer，这部分数据已经发出去了（虽然还没收到ACK，但已经不在“待发送”队列了）
-    if (data_size > 0) {
-        tcp_buf_add_unacked_count(&pcb->tx_buf, data_size);
+    // 发送后，增加unacked的数量
+    if (payload_len > 0) {
+        tcp_buf_advance_send(&pcb->tx_buf, payload_len);
     }
 
-    pcb->remote_win -= data_size;
-    pcb->next_seq += data_size;
+    pcb->remote_win -= payload_len;
+    pcb->snd_nxt += payload_len;
 
 
     if (flags & (XTCP_FLAG_SYN | XTCP_FLAG_FIN)) {
-        pcb->next_seq++; // SYN或FIN占用1个字节，ACK不占用
+        pcb->snd_nxt++; // SYN或FIN占用1个字节，ACK不占用
     }
     return XNET_OK;
 }
@@ -225,8 +270,8 @@ static void xtcp_pcb_init(xtcp_pcb_t* pcb) {
     pcb->remote_mss = XTCP_MSS_DEFAULT;
 
     // 序列号随机化
-    pcb->next_seq = tcp_get_init_seq(); // 当前流水号
-    pcb->unacked_seq = pcb->next_seq; // 初始时，未确认的就是当前的
+    pcb->snd_nxt = tcp_get_init_seq(); // 当前流水号
+    pcb->snd_una = pcb->snd_nxt; // 初始时，未确认的就是当前的
 
     // 缓冲区初始化
     tcp_buf_init(&pcb->tx_buf);
@@ -256,7 +301,7 @@ static void tcp_process_accept(xtcp_pcb_t* listen_pcb, xip_addr_t* remote_ip, xt
     child_pcb->remote_ip = *remote_ip; // IP层传入
     child_pcb->remote_port = tcp_hdr->src_port;
     child_pcb->remote_win = tcp_hdr->window;
-    child_pcb->ack = tcp_hdr->seq + 1; // SYN占用一个字节
+    child_pcb->rcv_nxt = tcp_hdr->seq + 1; // SYN占用一个字节
 
     // 解析选项中的MSS
     tcp_read_mss(child_pcb, tcp_hdr);
@@ -275,7 +320,7 @@ void xtcp_init(void) {
 
 void xtcp_in(xip_addr_t* remote_ip, xnet_packet_t* packet) {
     // 校验TCP包的长度
-    if (packet->length < sizeof(xtcp_hdr_t)) {
+    if (packet->len < sizeof(xtcp_hdr_t)) {
         return;
     }
     // 校验校验和
@@ -283,7 +328,7 @@ void xtcp_in(xip_addr_t* remote_ip, xnet_packet_t* packet) {
     uint16_t pre_checksum = tcp_hdr->checksum;
     tcp_hdr->checksum = 0;
     if (pre_checksum != 0) {
-        uint16_t checksum = checksum_peso(remote_ip, &xnet_local_ip, XNET_PROTOCOL_TCP, (uint16_t*) tcp_hdr, packet->length);
+        uint16_t checksum = checksum_peso(remote_ip, &xnet_local_ip, XNET_PROTOCOL_TCP, (uint16_t*) tcp_hdr, packet->len);
         checksum = (checksum == 0) ? 0xFFFF : checksum;
         if (checksum != pre_checksum) {
             return;
@@ -312,7 +357,7 @@ void xtcp_in(xip_addr_t* remote_ip, xnet_packet_t* packet) {
         return;
     }
 
-    if (tcp_hdr->seq != pcb->ack) {
+    if (tcp_hdr->seq != pcb->rcv_nxt) {
         tcp_send_reset(tcp_hdr->seq + 1, tcp_hdr->dest_port, remote_ip, tcp_hdr->src_port);
         return;
     }
@@ -325,8 +370,8 @@ void xtcp_in(xip_addr_t* remote_ip, xnet_packet_t* packet) {
             // 作为服务端，收到收到第三次握手
             if (flags & XTCP_FLAG_ACK) {
                 // 确保对方确认的是我发的那个 SYN
-                if (tcp_hdr->ack == pcb->next_seq) {
-                    pcb->unacked_seq++; // 滑动窗口，确认第二次握手的请求，已收到
+                if (tcp_hdr->ack == pcb->snd_nxt) {
+                    pcb->snd_una++; // 滑动窗口，确认第二次握手的请求，已收到
                     pcb->state = XTCP_STATE_ESTABLISHED;
                     pcb->event_cb(pcb, XTCP_EVENT_CONNECTED); // 通知应用层
                 } else {
@@ -334,23 +379,35 @@ void xtcp_in(xip_addr_t* remote_ip, xnet_packet_t* packet) {
                 }
             }
             break;
-        case XTCP_STATE_ESTABLISHED:
+        case XTCP_STATE_ESTABLISHED: //连接已建立，大部分情况都会走这里
             if ((flags & XTCP_FLAG_ACK)) {
-                if ((pcb->unacked_seq < tcp_hdr->ack) && (tcp_hdr->ack <= pcb->next_seq)) {
-                    uint16_t curr_ack_size = tcp_hdr->ack - pcb->unacked_seq;
-                    tcp_buf_add_acked_count(&pcb->tx_buf, curr_ack_size);
-                    pcb->unacked_seq += curr_ack_size;
+                // 实时更新对方的接收窗口。
+                // 即使 ACK 号没有变（即没有确认新数据），对方也可能只是发个包来告诉我们窗口变大了。
+                pcb->remote_win = tcp_hdr->window;
+                if ((pcb->snd_una < tcp_hdr->ack) && (tcp_hdr->ack <= pcb->snd_nxt)) {
+                    // 计算对方确认了多少字节
+                    uint16_t acked_len = tcp_hdr->ack - pcb->snd_una;
+
+                    // 释放发送缓冲区空间 (这一步把 tail 指针前移了)
+                    tcp_buf_advance_ack(&pcb->tx_buf, acked_len);
+                    pcb->snd_una += acked_len;
+
+                    // 如果确实腾出了空间，且应用层注册了回调，就通知它
+                    // curr_ack_size > 0 意味着缓冲区比刚才空了一点
+                    if (acked_len > 0 && pcb->event_cb) {
+                        pcb->event_cb(pcb, XTCP_EVENT_SENT);
+                    }
                 }
             }
 
-            uint16_t read_size = tcp_recv(pcb, (uint8_t)tcp_hdr->hdr_flags.flags, packet->data, packet->length);
+            uint16_t read_len = tcp_recv(pcb, (uint8_t)tcp_hdr->hdr_flags.flags, packet->data, packet->len);
 
             // 作为服务端，收到第一次挥手
             if ((flags & XTCP_FLAG_FIN)) {
                 pcb->state = XTCP_STATE_LAST_ACK;
-                pcb->ack++;
+                pcb->rcv_nxt++;
                 tcp_send_segment(pcb, XTCP_FLAG_FIN | XTCP_FLAG_ACK);
-            }else if (read_size) {
+            }else if (read_len) {
                 tcp_send_segment(pcb, XTCP_FLAG_ACK);
                 pcb->event_cb(pcb, XTCP_EVENT_DATA_RECEIVED);
             }else if (tcp_buf_wait_send_count(&pcb->tx_buf)) { // 捎带发送
@@ -370,7 +427,7 @@ void xtcp_in(xip_addr_t* remote_ip, xnet_packet_t* packet) {
         case XTCP_STATE_FIN_WAIT_2:
             // 检查是否收到了对方的 FIN 包（即第三次挥手的 FIN 部分）
             if ((flags & XTCP_FLAG_FIN)) {
-                pcb->ack++;
+                pcb->rcv_nxt++;
                 tcp_send_segment(pcb,XTCP_FLAG_ACK);
                 tcp_pcb_free(pcb);
             }
@@ -467,23 +524,21 @@ xnet_status_t xtcp_pcb_listen(xtcp_pcb_t* pcb) {
     return XNET_OK;
 }
 
-// 向pcb中写入数据
-int xtcp_write(xtcp_pcb_t* pcb, uint8_t* data, uint16_t size) {
-    int buffered_count;
-
+// 向tcp中写入数据
+int xtcp_write(xtcp_pcb_t* pcb, uint8_t* src, uint16_t len) {
     if ((pcb->state != XTCP_STATE_ESTABLISHED)) {
         return -1;
     }
     // 将数据拷贝到pcb->tx_buf，移动front
-    buffered_count = tcp_buf_write(&pcb->tx_buf, data, size);
-    if (buffered_count) {
+    int written = tcp_buf_write(&pcb->tx_buf, src, len);
+    if (written) {
         tcp_send_segment(pcb, XTCP_FLAG_ACK); // 只要连接建立，每一次发送都要带ACK
     }
-    return buffered_count;
+    return written;
 }
 
-int xtcp_read(xtcp_pcb_t* pcb, uint8_t* data, uint16_t size) {
-    return tcp_buf_read(&pcb->rx_buf, data, size);
+int xtcp_read(xtcp_pcb_t* pcb, uint8_t* dest, uint16_t len) {
+    return tcp_buf_read(&pcb->rx_buf, dest, len);
 }
 
 // 服务端主动关闭连接

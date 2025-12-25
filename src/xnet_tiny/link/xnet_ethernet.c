@@ -13,7 +13,7 @@
 #define XARP_REQUEST                0x1         // ARP请求包
 #define XARP_REPLY                  0x2         // ARP响应包
 
-static uint8_t xnet_local_mac[XNET_MAC_ADDR_SIZE]; // 协议栈mac地址,由驱动回写
+uint8_t xnet_local_mac[XNET_MAC_ADDR_SIZE]; // 协议栈mac地址,由驱动回写
 static const uint8_t ether_broadcast_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // 以太网广播mac地址
 
 /**
@@ -105,7 +105,7 @@ xnet_status_t xarp_make_response(uint8_t* target_ip, uint8_t* target_mac) {
  */
 void xarp_in(xnet_packet_t* packet) {
     // 如果小于，说明数据错误，直接忽略这个arp请求
-    if (packet->length < sizeof(xarp_packet_t)) return;
+    if (packet->len < sizeof(xarp_packet_t)) return;
 
     // 包的合法性检查
     xarp_packet_t* arp_packet = (xarp_packet_t*) packet->data;
@@ -151,7 +151,7 @@ void xarp_in(xnet_packet_t* packet) {
  */
 void ethernet_in(xnet_packet_t* packet) {
     // 数据至少要比以太网头部大
-    if (packet->length <= sizeof(xether_hdr_t)) {
+    if (packet->len <= sizeof(xether_hdr_t)) {
         return;
     }
 

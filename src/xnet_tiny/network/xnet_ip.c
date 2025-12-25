@@ -85,7 +85,7 @@ void xip_in(xnet_packet_t* packet) {
     // 长度要求检查
     uint32_t ip_hdr_len = ip_hdr->hdr_len * 4;
     uint32_t ip_total_len = swap_order16(ip_hdr->total_len);
-    if ((ip_hdr_len < sizeof(xip_hdr_t)) || ((ip_total_len < ip_hdr_len) || (packet->length < ip_total_len))) {
+    if ((ip_hdr_len < sizeof(xip_hdr_t)) || ((ip_total_len < ip_hdr_len) || (packet->len < ip_total_len))) {
         return;
     }
 
@@ -105,7 +105,7 @@ void xip_in(xnet_packet_t* packet) {
     memcpy(src_ip.addr, ip_hdr->src_ip, XNET_IPV4_ADDR_SIZE);
     switch(ip_hdr->protocol) {
         case XNET_PROTOCOL_UDP:
-            if (packet->length >= sizeof(xudp_hdr_t)) {
+            if (packet->len >= sizeof(xudp_hdr_t)) {
                 // 这里还没有移除ip头部，所以需要手动后移
                 xudp_hdr_t* udp_hdr = (xudp_hdr_t*)(packet->data + ip_hdr_len);
                 xudp_socket_t* udp_socket = xudp_find_socket(swap_order16(udp_hdr->dest_port));
@@ -167,7 +167,7 @@ xnet_status_t xip_out(xnet_protocol_t protocol, xip_addr_t* dest_ip, xnet_packet
     ip_hdr->version = XNET_VERSION_IPV4;
     ip_hdr->hdr_len = sizeof(xip_hdr_t) / 4;
     ip_hdr->tos = 0; //不支持，填0
-    ip_hdr->total_len = swap_order16(packet->length);
+    ip_hdr->total_len = swap_order16(packet->len);
     ip_hdr->id = swap_order16(ip_packet_id);
     ip_hdr->flags_fragment = 0; //不支持，填0
     ip_hdr->ttl = XNET_IP_DEFAULT_TTL;
