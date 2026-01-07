@@ -108,7 +108,7 @@ static void xhttp_handle_client(xsocket_t* client) {
     }
 
     // 4. 发送文件
-    printf("http: request %s\n", xhttp_req_path);
+    printf("[Http Server]: request %s\n", xhttp_req_path);
     xhttp_send_file(client, xhttp_req_path);
 }
 

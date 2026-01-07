@@ -1,54 +1,47 @@
 ﻿#include "xserver_datetime.h"
-#include "xsocket.h"      // 只依赖 Socket 接口
-#include <time.h>
-#include <stdio.h>
-#include <string.h>
 
-#include "xnet_tiny.h"
+#include <stdio.h>
+
+#include "xsocket.h"
+
+#include <time.h>
+#include <string.h>
 
 #define TIME_STR_SIZE 128
 
-// 全局 Socket 句柄
-static xsocket_t* datetime_server_socket;
+static xsocket_t* udp_sock;
 static char time_buffer[TIME_STR_SIZE];
+static char rx_buf[64];
 
 xnet_status_t xserver_datetime_create(uint16_t port) {
-    // 1. 创建 Socket
-    datetime_server_socket = xsocket_open();
-    if (!datetime_server_socket) {
-        return XNET_ERR_MEM;
-    }
+    udp_sock = xsocket_open_ex(XSOCKET_TYPE_UDP);
+    if (!udp_sock) return XNET_ERR_MEM;
 
-    // 2. 绑定端口 (通常是 13)
-    xnet_status_t err = xsocket_bind(datetime_server_socket, port);
-    if (err != XNET_OK) {
-        xsocket_close(datetime_server_socket);
-        datetime_server_socket = NULL;
-        return err;
+    xnet_status_t r = xsocket_bind(udp_sock, port);
+    if (r != XNET_OK) {
+        xsocket_close(udp_sock);
+        udp_sock = NULL;
+        return r;
     }
-
-    // 3. 开始监听
-    err = xsocket_listen(datetime_server_socket);
-    if (err != XNET_OK) {
-        xsocket_close(datetime_server_socket);
-        datetime_server_socket = NULL;
-        return err;
-    }
-
     return XNET_OK;
 }
 
 void xserver_datetime_poll(void) {
-    if (!datetime_server_socket) return;
+    if (!udp_sock) return;
 
-    // 非阻塞 accept
-    xsocket_t* client = xsocket_accept(datetime_server_socket);
-    if (!client) return;
+    xip_addr_t src_ip;
+    uint16_t src_port;
 
-    // 生成时间字符串
+    // 收到任意 UDP 包就回时间；max_polls 给小一点避免卡主循环
+    int n = xsocket_recvfrom(udp_sock, rx_buf, sizeof(rx_buf), &src_ip, &src_port, 1);
+    if (n <= 0) return;
+
+    printf("[DateTime Server] Recv UDP Request from IP: %d.%d.%d.%d, Port: %d\n",
+           src_ip.addr[0], src_ip.addr[1], src_ip.addr[2], src_ip.addr[3],
+           src_port);
+
     time_t rawtime;
     struct tm* timeinfo;
-
     time(&rawtime);
     timeinfo = localtime(&rawtime);
 
@@ -57,7 +50,6 @@ void xserver_datetime_poll(void) {
         len = (int)strftime(time_buffer, TIME_STR_SIZE, "%Y-%m-%d %H:%M:%S\r\n", timeinfo);
     }
 
-    // strftime 失败或返回 0：兜底
     if (len <= 0) {
         const char* fallback = "1970-01-01 00:00:00\r\n";
         strncpy(time_buffer, fallback, TIME_STR_SIZE - 1);
@@ -65,10 +57,5 @@ void xserver_datetime_poll(void) {
         len = (int)strlen(time_buffer);
     }
 
-    // 发送（Daytime 协议：发完就关）
-    int w = xsocket_write(client, time_buffer, len);
-    (void)w; // 目前不强依赖写成功与否，反正都要关闭
-
-    // 立刻关闭：FIN 发出，后续状态机由主循环 xnet_poll 推进
-    xsocket_close(client);
+    xsocket_sendto(udp_sock, time_buffer, len, &src_ip, src_port);
 }

@@ -7,13 +7,13 @@
 #include "xnet_ip.h"
 #include <string.h>
 
-static xudp_socket_t udp_socket_pool[XUDP_MAX_SOCKET_COUNT];
+static xudp_pcb_t udp_socket_pool[XUDP_MAX_SOCKET_COUNT];
 
 void xudp_init(void) {
     memset(udp_socket_pool, 0, sizeof(udp_socket_pool));
 }
 
-void xudp_in(xudp_socket_t* socket, xip_addr_t* src_ip, xnet_packet_t* packet)
+void xudp_in(xudp_pcb_t* socket, xip_addr_t* src_ip, xnet_packet_t* packet)
 {
     xudp_hdr_t* udp_hdr = (xudp_hdr_t*) packet->data;
     uint16_t pre_checksum;
@@ -57,7 +57,7 @@ void xudp_in(xudp_socket_t* socket, xip_addr_t* src_ip, xnet_packet_t* packet)
     }
 }
 
-xnet_status_t xudp_send_to(xudp_socket_t* socket, xip_addr_t* dest_ip, uint16_t dest_port, xnet_packet_t* packet) {
+xnet_status_t xudp_send_to(xudp_pcb_t* socket, xip_addr_t* dest_ip, uint16_t dest_port, xnet_packet_t* packet) {
     xudp_hdr_t * udp_hdr;
     uint16_t checksum;
 
@@ -72,9 +72,9 @@ xnet_status_t xudp_send_to(xudp_socket_t* socket, xip_addr_t* dest_ip, uint16_t 
     return xip_out(XNET_PROTOCOL_UDP, dest_ip, packet);
 }
 
-xudp_socket_t* xudp_alloc_socket(xudp_handler_t handler) {
+xudp_pcb_t* xudp_alloc_socket(xudp_handler_t handler) {
     // 1. 遍历资源池
-    for (xudp_socket_t* cur = udp_socket_pool; cur < &udp_socket_pool[XUDP_MAX_SOCKET_COUNT]; cur++) {
+    for (xudp_pcb_t* cur = udp_socket_pool; cur < &udp_socket_pool[XUDP_MAX_SOCKET_COUNT]; cur++) {
 
         // 2. 检查是否占用
         if (cur->state == XUDP_STATE_FREE) {
@@ -87,12 +87,12 @@ xudp_socket_t* xudp_alloc_socket(xudp_handler_t handler) {
     return NULL;
 }
 
-void xudp_free_socket(xudp_socket_t* socket) {
+void xudp_free_socket(xudp_pcb_t* socket) {
     socket->state = XUDP_STATE_FREE;
 }
 
-xudp_socket_t* xudp_find_socket(uint16_t port) {
-    for (xudp_socket_t* curr = udp_socket_pool; curr < &udp_socket_pool[XUDP_MAX_SOCKET_COUNT]; curr++) {
+xudp_pcb_t* xudp_find_socket(uint16_t port) {
+    for (xudp_pcb_t* curr = udp_socket_pool; curr < &udp_socket_pool[XUDP_MAX_SOCKET_COUNT]; curr++) {
         if (curr->state == XUDP_STATE_USED && curr->local_port == port) {
             return curr;
         }
@@ -100,9 +100,9 @@ xudp_socket_t* xudp_find_socket(uint16_t port) {
     return NULL;
 }
 
-xnet_status_t xudp_bind_socket(xudp_socket_t* socket, uint16_t port) {
+xnet_status_t xudp_bind_socket(xudp_pcb_t* socket, uint16_t port) {
     // 1. 是否已占用
-    for (xudp_socket_t* curr = udp_socket_pool; curr < &udp_socket_pool[XUDP_MAX_SOCKET_COUNT]; curr++) {
+    for (xudp_pcb_t* curr = udp_socket_pool; curr < &udp_socket_pool[XUDP_MAX_SOCKET_COUNT]; curr++) {
         if (curr->state == XUDP_STATE_USED && curr->local_port == port) {
             return XNET_ERR_BINDED;
         }

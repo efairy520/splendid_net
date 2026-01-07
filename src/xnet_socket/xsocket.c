@@ -1,66 +1,165 @@
 #include "xsocket.h"
 #include "xnet_tcp.h"
+#include "xnet_udp.h"
 #include "xnet_tiny.h"
 
-#include <stddef.h>
+#include <string.h>
 
-// 连接队列深度（listener backlog）
-#define XSOCKET_BACKLOG 10
-
-// xsocket_read 默认最大 poll 次数（避免无限阻塞）
+#define XSOCKET_MAX_NUM            40     // 你 TCP PCB 池是 40，这里跟着用
+#define XSOCKET_BACKLOG            10
 #define XSOCKET_READ_DEFAULT_POLLS 2000
 
+// UDP 邮箱大小：IPv4(20)+UDP(8) 后的典型 MTU 1500 -> 1472 payload
+#define XSOCKET_UDP_RX_BUF_SIZE    1472
+
+struct _xsocket_t {
+    xsocket_type_t type;
+    uint8_t is_used;
+
+    union {
+        xtcp_pcb_t* tcp;
+        xudp_pcb_t* udp;
+    } pcb;
+
+    // ===== UDP 小邮箱（单包缓存）=====
+    uint8_t    udp_rx_buf[XSOCKET_UDP_RX_BUF_SIZE];
+    uint16_t   udp_rx_len;      // 0 表示无数据
+    xip_addr_t udp_src_ip;
+    uint16_t   udp_src_port;
+};
+
+static struct _xsocket_t socket_pool[XSOCKET_MAX_NUM];
+
+// 前置声明：底层 UDP 回调
+static xnet_status_t internal_udp_handler(xudp_pcb_t* udp_socket,
+                                         xip_addr_t* src_ip,
+                                         uint16_t src_port,
+                                         xnet_packet_t* packet);
+
+static xsocket_t* xsocket_alloc(void) {
+    for (int i = 0; i < XSOCKET_MAX_NUM; i++) {
+        if (!socket_pool[i].is_used) {
+            memset(&socket_pool[i], 0, sizeof(socket_pool[i]));
+            socket_pool[i].is_used = 1;
+            return &socket_pool[i];
+        }
+    }
+    return NULL;
+}
+
+static void xsocket_free(xsocket_t* s) {
+    if (!s) return;
+    memset(s, 0, sizeof(*s));
+}
+
+// ===== 打开/关闭 =====
+
 xsocket_t* xsocket_open(void) {
-    // S 方案：accept 队列在 listener pcb 内部维护，因此不需要全局 ctx
-    xtcp_pcb_t* pcb = xtcp_pcb_new(NULL);
-    if (!pcb) return NULL;
-    return (xsocket_t*)pcb;
+    return xsocket_open_ex(XSOCKET_TYPE_TCP);
+}
+
+xsocket_t* xsocket_open_ex(xsocket_type_t type) {
+    xsocket_t* s = xsocket_alloc();
+    if (!s) return NULL;
+
+    s->type = type;
+
+    if (type == XSOCKET_TYPE_TCP) {
+        s->pcb.tcp = xtcp_pcb_new(NULL);
+        if (!s->pcb.tcp) {
+            xsocket_free(s);
+            return NULL;
+        }
+    } else {
+        // UDP：注册内部 handler，用邮箱桥接到 recvfrom
+        s->pcb.udp = xudp_alloc_socket(internal_udp_handler);
+        if (!s->pcb.udp) {
+            xsocket_free(s);
+            return NULL;
+        }
+    }
+
+    return s;
 }
 
 void xsocket_close(xsocket_t* socket) {
     if (!socket) return;
-    xtcp_pcb_close((xtcp_pcb_t*)socket);
+
+    if (socket->type == XSOCKET_TYPE_TCP) {
+        if (socket->pcb.tcp) {
+            xtcp_pcb_close(socket->pcb.tcp);
+            socket->pcb.tcp = NULL;
+        }
+    } else {
+        if (socket->pcb.udp) {
+            xudp_free_socket(socket->pcb.udp);
+            socket->pcb.udp = NULL;
+        }
+    }
+
+    xsocket_free(socket);
 }
+
+// ===== bind =====
 
 xnet_status_t xsocket_bind(xsocket_t* socket, uint16_t port) {
     if (!socket) return XNET_ERR_PARAM;
-    return xtcp_pcb_bind((xtcp_pcb_t*)socket, port);
+
+    if (socket->type == XSOCKET_TYPE_TCP) {
+        if (!socket->pcb.tcp) return XNET_ERR_PARAM;
+        return xtcp_pcb_bind(socket->pcb.tcp, port);
+    } else {
+        if (!socket->pcb.udp) return XNET_ERR_PARAM;
+        return xudp_bind_socket(socket->pcb.udp, port);
+    }
 }
 
-xnet_status_t xsocket_listen(xsocket_t* socket) {
-    if (!socket) return XNET_ERR_PARAM;
+// ===== TCP 专用 =====
 
-    xtcp_pcb_t* pcb = (xtcp_pcb_t*)socket;
-    xnet_status_t r = xtcp_pcb_listen(pcb);
+xnet_status_t xsocket_listen(xsocket_t* socket) {
+    if (!socket || socket->type != XSOCKET_TYPE_TCP || !socket->pcb.tcp) {
+        return XNET_ERR_STATE;
+    }
+
+    xnet_status_t r = xtcp_pcb_listen(socket->pcb.tcp);
     if (r == XNET_OK) {
-        // backlog 由 socket 层统一配置
-        pcb->backlog = XSOCKET_BACKLOG;
+        socket->pcb.tcp->backlog = XSOCKET_BACKLOG;
     }
     return r;
 }
 
 xsocket_t* xsocket_accept(xsocket_t* socket) {
-    if (!socket) return NULL;
-    // 不要在这里 xnet_poll()；由 super loop 统一 poll
-    return (xsocket_t*)xtcp_accept((xtcp_pcb_t*)socket);
+    if (!socket || socket->type != XSOCKET_TYPE_TCP || !socket->pcb.tcp) {
+        return NULL;
+    }
+
+    xtcp_pcb_t* child = xtcp_accept(socket->pcb.tcp);
+    if (!child) return NULL;
+
+    xsocket_t* client = xsocket_alloc();
+    if (!client) {
+        // 没有 wrapper 资源，只能关掉 child
+        xtcp_pcb_close(child);
+        return NULL;
+    }
+
+    client->type = XSOCKET_TYPE_TCP;
+    client->pcb.tcp = child;
+    return client;
 }
 
-// 写：仍保持你原来的“伪阻塞”模式（会 poll，但不会无限卡住太久）
-// 注意：更理想是写也提供 try_write，然后上层状态机驱动。
-// 但 Daytime 写很短，先这样够用。
 int xsocket_write(xsocket_t* socket, const char* data, int len) {
-    if (!socket || !data || len <= 0) return 0;
+    if (!socket || socket->type != XSOCKET_TYPE_TCP || !socket->pcb.tcp) return -1;
+    if (!data || len <= 0) return 0;
 
-    xtcp_pcb_t* pcb = (xtcp_pcb_t*)socket;
+    xtcp_pcb_t* pcb = socket->pcb.tcp;
     int sent_total = 0;
 
     while (len > 0) {
         int curr = xtcp_send(pcb, (uint8_t*)data, (uint16_t)len);
-        if (curr < 0) return -1; // 连接断开或状态不对
+        if (curr < 0) return -1;
 
-        // xtcp_send 可能因为 tx_buf 满返回 0（你的实现里基本不会，但防一下）
         if (curr == 0) {
-            // 让出一次 poll，等待 ACK 释放缓冲
             xnet_poll();
             continue;
         }
@@ -69,20 +168,18 @@ int xsocket_write(xsocket_t* socket, const char* data, int len) {
         data += curr;
         sent_total += curr;
 
-        // 驱动发送（轻量）
         xnet_poll();
     }
 
     return sent_total;
 }
 
-// 连接是否还“可读/可等”的状态判断
 static int xsocket_is_alive_for_read(const xtcp_pcb_t* pcb) {
     if (!pcb) return 0;
 
     switch (pcb->state) {
         case XTCP_STATE_ESTABLISHED:
-        case XTCP_STATE_CLOSE_WAIT:   // 对端 FIN 后你仍可能有数据可读
+        case XTCP_STATE_CLOSE_WAIT:
         case XTCP_STATE_FIN_WAIT_1:
         case XTCP_STATE_FIN_WAIT_2:
             return 1;
@@ -91,47 +188,105 @@ static int xsocket_is_alive_for_read(const xtcp_pcb_t* pcb) {
     }
 }
 
-// 非阻塞读：一次尝试
 int xsocket_try_read(xsocket_t* socket, char* buf, int max_len) {
-    if (!socket || !buf || max_len <= 0) return 0;
+    if (!socket || socket->type != XSOCKET_TYPE_TCP || !socket->pcb.tcp) return -1;
+    if (!buf || max_len <= 0) return 0;
 
-    xtcp_pcb_t* pcb = (xtcp_pcb_t*)socket;
-
-    // 先从 rx_buf 取（不会阻塞）
-    int n = xtcp_recv(pcb, (uint8_t*)buf, (uint16_t)max_len);
+    int n = xtcp_recv(socket->pcb.tcp, (uint8_t*)buf, (uint16_t)max_len);
     if (n > 0) return n;
 
-    // 没数据：看连接是否还活着
-    if (xsocket_is_alive_for_read(pcb)) {
-        return 0;   // EWOULDBLOCK
-    }
-    return -1;      // 连接已关闭/异常
+    return xsocket_is_alive_for_read(socket->pcb.tcp) ? 0 : -1;
 }
 
-// 带超时读：最多 poll max_polls 次，仍无数据则返回 0
 int xsocket_read_timeout(xsocket_t* socket, char* buf, int max_len, int max_polls) {
-    if (!socket || !buf || max_len <= 0) return 0;
+    if (!socket || socket->type != XSOCKET_TYPE_TCP || !socket->pcb.tcp) return -1;
+    if (!buf || max_len <= 0) return 0;
     if (max_polls <= 0) max_polls = 1;
 
-    xtcp_pcb_t* pcb = (xtcp_pcb_t*)socket;
+    xtcp_pcb_t* pcb = socket->pcb.tcp;
 
     for (int i = 0; i < max_polls; i++) {
         int n = xtcp_recv(pcb, (uint8_t*)buf, (uint16_t)max_len);
         if (n > 0) return n;
 
-        // 连接死了
-        if (!xsocket_is_alive_for_read(pcb)) {
-            return -1;
+        if (!xsocket_is_alive_for_read(pcb)) return -1;
+        xnet_poll();
+    }
+    return 0;
+}
+
+int xsocket_read(xsocket_t* socket, char* buf, int max_len) {
+    return xsocket_read_timeout(socket, buf, max_len, XSOCKET_READ_DEFAULT_POLLS);
+}
+
+// ===== UDP 专用 =====
+
+// 底层回调：把收到的 UDP payload 放进对应 wrapper 的邮箱
+static xnet_status_t internal_udp_handler(xudp_pcb_t* udp_socket,
+                                         xip_addr_t* src_ip,
+                                         uint16_t src_port,
+                                         xnet_packet_t* packet) {
+    // 找到对应的 xsocket wrapper（池子很小，直接遍历）
+    xsocket_t* s = NULL;
+    for (int i = 0; i < XSOCKET_MAX_NUM; i++) {
+        if (socket_pool[i].is_used &&
+            socket_pool[i].type == XSOCKET_TYPE_UDP &&
+            socket_pool[i].pcb.udp == udp_socket) {
+            s = &socket_pool[i];
+            break;
+        }
+    }
+    if (!s) return XNET_ERR_PARAM;
+
+    // 邮箱满就丢（UDP 正常行为）
+    if (s->udp_rx_len != 0) return XNET_OK;
+
+    uint16_t copy_len = packet->len;
+    if (copy_len > XSOCKET_UDP_RX_BUF_SIZE) copy_len = XSOCKET_UDP_RX_BUF_SIZE;
+
+    memcpy(s->udp_rx_buf, packet->data, copy_len);
+    s->udp_rx_len = copy_len;
+    s->udp_src_ip = *src_ip;
+    s->udp_src_port = src_port;
+
+    return XNET_OK;
+}
+
+int xsocket_sendto(xsocket_t* socket, const char* data, int len,
+                   const xip_addr_t* dest_ip, uint16_t dest_port) {
+    if (!socket || socket->type != XSOCKET_TYPE_UDP || !socket->pcb.udp) return -1;
+    if (!data || len <= 0 || !dest_ip || dest_port == 0) return -1;
+
+    xnet_packet_t* packet = xnet_alloc_tx_packet((uint16_t)len);
+    if (!packet) return -1;
+
+    memcpy(packet->data, data, len);
+
+    xnet_status_t r = xudp_send_to(socket->pcb.udp, (xip_addr_t*)dest_ip, dest_port, packet);
+    return (r == XNET_OK) ? len : -1;
+}
+
+int xsocket_recvfrom(xsocket_t* socket, char* buf, int max_len,
+                     xip_addr_t* src_ip, uint16_t* src_port, int max_polls) {
+    if (!socket || socket->type != XSOCKET_TYPE_UDP || !socket->pcb.udp) return -1;
+    if (!buf || max_len <= 0) return -1;
+    if (max_polls <= 0) max_polls = 1;
+
+    for (int i = 0; i < max_polls; i++) {
+        if (socket->udp_rx_len > 0) {
+            int n = (socket->udp_rx_len > (uint16_t)max_len) ? max_len : socket->udp_rx_len;
+
+            memcpy(buf, socket->udp_rx_buf, n);
+            if (src_ip) *src_ip = socket->udp_src_ip;
+            if (src_port) *src_port = socket->udp_src_port;
+
+            socket->udp_rx_len = 0; // 清空邮箱
+            return n;
         }
 
-        // 关键：只 poll 一次，让协议栈继续前进，但不会无限霸占 CPU
+        // 驱动协议栈收包
         xnet_poll();
     }
 
-    return 0; // 超时仍无数据
-}
-
-// 兼容旧接口：默认带上限超时
-int xsocket_read(xsocket_t* socket, char* buf, int max_len) {
-    return xsocket_read_timeout(socket, buf, max_len, XSOCKET_READ_DEFAULT_POLLS);
+    return 0; // 超时
 }
