@@ -3,6 +3,15 @@ project(splendid_net C)
 
 set(CMAKE_C_STANDARD 99)
 
+# =======================================================
+# !!! 关键修正：必须放在最前面 !!!
+# 这样不仅主程序生效，所有 add_subdirectory 里的 DLL 也会生效
+# =======================================================
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+# (可选) 如果你想把 .lib 导入库和静态库也放一起，可以加上下面两行：
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
 if(NOT WIN32)
     add_compile_options(-march=native)
 endif()
@@ -59,26 +68,40 @@ add_subdirectory(src/xnet_app)
 # =======================================================
 # 3. 生成可执行文件
 # =======================================================
-add_executable(${PROJECT_NAME} src/app.c)
+add_executable(${PROJECT_NAME}
+        src/app.c
+        src/xnet_socket/xsocket.c
+)
+
+# 头文件路径
+target_include_directories(${PROJECT_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/xnet_tiny/core
+
+        # !!! 关键修正：补上 transport 目录，xnet_tcp.h 就在这里 !!!
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/xnet_tiny/transport
+
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/xnet_socket
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/xnet_app
+)
 
 # =======================================================
-# 4. 最终链接 (极简模式)
+# 4. 最终链接
 # =======================================================
-# 因为用了 OBJECT 库，这里把所有模块串起来
 if(WIN32)
     target_link_libraries(${PROJECT_NAME} PRIVATE
-            xnet_app      # 1. 应用
-            xnet_socket   # 2. Socket 接口
-            xnet_tiny     # 3. 协议栈
-            xnet_port     # 4. 端口适配
-            Npcap::SDK    # 5. 驱动依赖
+            xnet_app      # 链接应用层 (HTTP/Time)
+
+            # !!! 必须链接这两个，否则 EXE 找不到 xnet_init 和 xnet_poll !!!
+            xnet_tiny     # 链接核心协议栈
+            xnet_port     # 链接驱动适配层
+
+            # !!! 千万不要链接 xnet_socket !!!
+            # 因为我们在上面已经直接编译了 xsocket.c
     )
 else()
     target_link_libraries(${PROJECT_NAME} PRIVATE
             xnet_app
-            xnet_socket
             xnet_tiny
             xnet_port
-            DPDK::SDK
     )
 endif()

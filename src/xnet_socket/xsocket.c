@@ -12,6 +12,16 @@
 // UDP 邮箱大小：IPv4(20)+UDP(8) 后的典型 MTU 1500 -> 1472 payload
 #define XSOCKET_UDP_RX_BUF_SIZE    1472
 
+// Windows DLL 导出宏
+// 如果在 Linux 下编译，这个宏通常定义为空
+#ifndef XNET_EXPORT
+    #ifdef _WIN32
+        #define XNET_EXPORT __declspec(dllexport)
+    #else
+        #define XNET_EXPORT
+    #endif
+#endif
+
 struct _xsocket_t {
     xsocket_type_t type;
     uint8_t is_used;
@@ -54,11 +64,11 @@ static void xsocket_free(xsocket_t* s) {
 
 // ===== 打开/关闭 =====
 
-xsocket_t* xsocket_open(void) {
+XNET_EXPORT xsocket_t* xsocket_open(void) {
     return xsocket_open_ex(XSOCKET_TYPE_TCP);
 }
 
-xsocket_t* xsocket_open_ex(xsocket_type_t type) {
+XNET_EXPORT xsocket_t* xsocket_open_ex(xsocket_type_t type) {
     xsocket_t* s = xsocket_alloc();
     if (!s) return NULL;
 
@@ -82,7 +92,7 @@ xsocket_t* xsocket_open_ex(xsocket_type_t type) {
     return s;
 }
 
-void xsocket_close(xsocket_t* socket) {
+XNET_EXPORT void xsocket_close(xsocket_t* socket) {
     if (!socket) return;
 
     if (socket->type == XSOCKET_TYPE_TCP) {
@@ -102,7 +112,7 @@ void xsocket_close(xsocket_t* socket) {
 
 // ===== bind =====
 
-xnet_status_t xsocket_bind(xsocket_t* socket, uint16_t port) {
+XNET_EXPORT xnet_status_t xsocket_bind(xsocket_t* socket, uint16_t port) {
     if (!socket) return XNET_ERR_PARAM;
 
     if (socket->type == XSOCKET_TYPE_TCP) {
@@ -116,7 +126,7 @@ xnet_status_t xsocket_bind(xsocket_t* socket, uint16_t port) {
 
 // ===== TCP 专用 =====
 
-xnet_status_t xsocket_listen(xsocket_t* socket) {
+XNET_EXPORT xnet_status_t xsocket_listen(xsocket_t* socket) {
     if (!socket || socket->type != XSOCKET_TYPE_TCP || !socket->pcb.tcp) {
         return XNET_ERR_STATE;
     }
@@ -128,7 +138,7 @@ xnet_status_t xsocket_listen(xsocket_t* socket) {
     return r;
 }
 
-xsocket_t* xsocket_accept(xsocket_t* socket) {
+XNET_EXPORT xsocket_t* xsocket_accept(xsocket_t* socket) {
     if (!socket || socket->type != XSOCKET_TYPE_TCP || !socket->pcb.tcp) {
         return NULL;
     }
@@ -148,7 +158,7 @@ xsocket_t* xsocket_accept(xsocket_t* socket) {
     return client;
 }
 
-int xsocket_write(xsocket_t* socket, const char* data, int len) {
+XNET_EXPORT int xsocket_write(xsocket_t* socket, const char* data, int len) {
     if (!socket || socket->type != XSOCKET_TYPE_TCP || !socket->pcb.tcp) return -1;
     if (!data || len <= 0) return 0;
 
@@ -188,7 +198,7 @@ static int xsocket_is_alive_for_read(const xtcp_pcb_t* pcb) {
     }
 }
 
-int xsocket_try_read(xsocket_t* socket, char* buf, int max_len) {
+XNET_EXPORT int xsocket_try_read(xsocket_t* socket, char* buf, int max_len) {
     if (!socket || socket->type != XSOCKET_TYPE_TCP || !socket->pcb.tcp) return -1;
     if (!buf || max_len <= 0) return 0;
 
@@ -198,7 +208,7 @@ int xsocket_try_read(xsocket_t* socket, char* buf, int max_len) {
     return xsocket_is_alive_for_read(socket->pcb.tcp) ? 0 : -1;
 }
 
-int xsocket_read_timeout(xsocket_t* socket, char* buf, int max_len, int max_polls) {
+XNET_EXPORT int xsocket_read_timeout(xsocket_t* socket, char* buf, int max_len, int max_polls) {
     if (!socket || socket->type != XSOCKET_TYPE_TCP || !socket->pcb.tcp) return -1;
     if (!buf || max_len <= 0) return 0;
     if (max_polls <= 0) max_polls = 1;
@@ -215,7 +225,7 @@ int xsocket_read_timeout(xsocket_t* socket, char* buf, int max_len, int max_poll
     return 0;
 }
 
-int xsocket_read(xsocket_t* socket, char* buf, int max_len) {
+XNET_EXPORT int xsocket_read(xsocket_t* socket, char* buf, int max_len) {
     return xsocket_read_timeout(socket, buf, max_len, XSOCKET_READ_DEFAULT_POLLS);
 }
 
@@ -252,7 +262,7 @@ static xnet_status_t internal_udp_handler(xudp_pcb_t* udp_socket,
     return XNET_OK;
 }
 
-int xsocket_sendto(xsocket_t* socket, const char* data, int len,
+XNET_EXPORT int xsocket_sendto(xsocket_t* socket, const char* data, int len,
                    const xip_addr_t* dest_ip, uint16_t dest_port) {
     if (!socket || socket->type != XSOCKET_TYPE_UDP || !socket->pcb.udp) return -1;
     if (!data || len <= 0 || !dest_ip || dest_port == 0) return -1;
@@ -266,7 +276,7 @@ int xsocket_sendto(xsocket_t* socket, const char* data, int len,
     return (r == XNET_OK) ? len : -1;
 }
 
-int xsocket_recvfrom(xsocket_t* socket, char* buf, int max_len,
+XNET_EXPORT int xsocket_recvfrom(xsocket_t* socket, char* buf, int max_len,
                      xip_addr_t* src_ip, uint16_t* src_port, int max_polls) {
     if (!socket || socket->type != XSOCKET_TYPE_UDP || !socket->pcb.udp) return -1;
     if (!buf || max_len <= 0) return -1;

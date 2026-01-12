@@ -2,9 +2,10 @@
 
 set(SOCKET_SRCS
         xsocket.c
+        xnet_java_bridge.c   # <--- 新增这一行
 )
 
-add_library(xnet_socket STATIC ${SOCKET_SRCS})
+add_library(xnet_socket SHARED ${SOCKET_SRCS})
 
 # 设置头文件路径
 target_include_directories(xnet_socket
@@ -20,4 +21,7 @@ target_include_directories(xnet_socket
 
 # 链接底层协议栈
 # 这样 xsocket.c 里的 xtcp_send 等函数才能找到实现
-target_link_libraries(xnet_socket PRIVATE xnet_tiny)
+target_link_libraries(xnet_socket PRIVATE
+        xnet_tiny   # 协议栈核心
+        xnet_port   # 适配层 (它会自动带入 driver_pcap 或 driver_dpdk)
+)
