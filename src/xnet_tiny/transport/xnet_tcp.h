@@ -79,7 +79,7 @@ typedef enum _xtcp_event_e {
 typedef struct _xtcp_pcb_t xtcp_pcb_t;
 
 // TCP 事件回调函数指针（接口）
-typedef xnet_status_t (*xtcp_event_handler_t) (xtcp_pcb_t* pcb, xtcp_event_t event);
+typedef xnet_status_t (*xtcp_event_handler_t) (xtcp_pcb_t *pcb, xtcp_event_t event);
 
 // 5. TCP PCB 结构体
 struct _xtcp_pcb_t {
@@ -93,31 +93,31 @@ struct _xtcp_pcb_t {
     uint16_t               remote_mss;
     uint16_t               remote_win;
     xtcp_event_handler_t   event_cb;
-    xtcp_buf_t*            tx_buf;
-    xtcp_buf_t*            rx_buf;
+    xtcp_buf_t *tx_buf;
+    xtcp_buf_t *rx_buf;
 
     // ===== lwIP-like accept/backlog support =====
-    xtcp_pcb_t*            listener;        // child -> parent listen pcb
-    xtcp_pcb_t*            accept_next;     // child link node
-    xtcp_pcb_t*            accept_head;     // listen accept queue head
-    xtcp_pcb_t*            accept_tail;     // listen accept queue tail
+    xtcp_pcb_t *listener;        // child -> parent listen pcb
+    xtcp_pcb_t *accept_next;     // child link node
+    xtcp_pcb_t *accept_head;     // listen accept queue head
+    xtcp_pcb_t *accept_tail;     // listen accept queue tail
     uint8_t                backlog;         // listen backlog limit
     uint8_t                accept_cnt;      // listen current pending
 };
 
 void xtcp_init(void);
-void xtcp_in(xip_addr_t* remote_ip, xnet_packet_t* packet);
+void xtcp_in(xip_addr_t *remote_ip, xnet_packet_t *packet);
 
-xtcp_pcb_t* xtcp_pcb_new(xtcp_event_handler_t handler);
-xnet_status_t xtcp_pcb_bind(xtcp_pcb_t* pcb, uint16_t local_port);
-xtcp_pcb_t* xtcp_pcb_find(xip_addr_t* remote_ip, uint16_t remote_port, uint16_t local_port);
-xnet_status_t xtcp_pcb_listen(xtcp_pcb_t* pcb);
-xnet_status_t xtcp_pcb_close(xtcp_pcb_t* pcb);
+xtcp_pcb_t *xtcp_pcb_new(xtcp_event_handler_t handler);
+xnet_status_t xtcp_pcb_bind(xtcp_pcb_t *pcb, uint16_t local_port);
+xtcp_pcb_t *xtcp_pcb_find(xip_addr_t *remote_ip, uint16_t remote_port, uint16_t local_port);
+xnet_status_t xtcp_pcb_listen(xtcp_pcb_t *pcb);
+xnet_status_t xtcp_pcb_close(xtcp_pcb_t *pcb);
 
-int xtcp_send(xtcp_pcb_t* pcb, uint8_t* src, uint16_t len);
-int xtcp_recv(xtcp_pcb_t* pcb, uint8_t* dest, uint16_t len);
+int xtcp_send(xtcp_pcb_t *pcb, uint8_t *src, uint16_t len);
+int xtcp_recv(xtcp_pcb_t *pcb, uint8_t *dest, uint16_t len);
 
-xtcp_pcb_t* xtcp_accept(xtcp_pcb_t* listen_pcb);
+xtcp_pcb_t *xtcp_accept(xtcp_pcb_t *listen_pcb);
 
 
 

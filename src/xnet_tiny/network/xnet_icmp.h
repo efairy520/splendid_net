@@ -27,7 +27,7 @@ typedef struct _xicmp_hdr_t {
 #define XICMP_CODE_PRO_UNREACH      2
 
 void xicmp_init(void);
-void xicmp_in(xip_addr_t* src_ip, xnet_packet_t* packet);
-xnet_status_t xicmp_dest_unreach(uint8_t code, xip_hdr_t* ip_hdr) ;
+void xicmp_in(xip_addr_t *src_ip, xnet_packet_t *packet);
+xnet_status_t xicmp_dest_unreach(uint8_t code, xip_hdr_t *ip_hdr) ;
 
 #endif //XNET_ICMP_H

@@ -9,7 +9,7 @@
 
 #define TIME_STR_SIZE 128
 
-static xsocket_t* udp_sock;
+static xsocket_t *udp_sock;
 static char time_buffer[TIME_STR_SIZE];
 static char rx_buf[64];
 
@@ -41,7 +41,7 @@ void xserver_datetime_poll(void) {
            src_port);
 
     time_t rawtime;
-    struct tm* timeinfo;
+    struct tm *timeinfo;
     time(&rawtime);
     timeinfo = localtime(&rawtime);
 
@@ -51,7 +51,7 @@ void xserver_datetime_poll(void) {
     }
 
     if (len <= 0) {
-        const char* fallback = "1970-01-01 00:00:00\r\n";
+        const char *fallback = "1970-01-01 00:00:00\r\n";
         strncpy(time_buffer, fallback, TIME_STR_SIZE - 1);
         time_buffer[TIME_STR_SIZE - 1] = '\0';
         len = (int)strlen(time_buffer);

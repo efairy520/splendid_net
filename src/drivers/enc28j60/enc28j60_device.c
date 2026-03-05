@@ -137,7 +137,7 @@ void ENC28J60_Write_Op(u8 op,u8 addr,u8 data)
 //Read Rx buffer data from ENC28J60
 //len: data length to read
 //data: pointer to store data
-void ENC28J60_Read_Buf(u32 len,u8* data)
+void ENC28J60_Read_Buf(u32 len,u8 *data)
 {
     ENC28J60_SELECT();           
     ENC28J60_cs_delayms();    
@@ -151,7 +151,7 @@ void ENC28J60_Read_Buf(u32 len,u8* data)
 //Write data to send via ENC28J60
 //len: data length to send
 //data: data pointer
-void ENC28J60_Write_Buf(u32 len,u8* data)
+void ENC28J60_Write_Buf(u32 len,u8 *data)
 {
     ENC28J60_SELECT();             
     ENC28J60_cs_delayms();    
@@ -203,7 +203,7 @@ void ENC28J60_PHY_Write(u8 addr,u32 data)
 //Setup ENC28J60
 //macaddr: assigned MAC address
 //return: 0=success, 1=failed
-u8 ENC28J60_Init(u8* macaddr)
+u8 ENC28J60_Init(u8 *macaddr)
 {       
     u16 retry=0;          
     ENC28J60_Reset();

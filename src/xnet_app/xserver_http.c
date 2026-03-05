@@ -11,14 +11,14 @@ static char xhttp_req_path[255];
 static char xhttp_fs_path[255];
 
 // 全局 Server Socket
-static xsocket_t* server_socket;
+static xsocket_t *server_socket;
 
 // -------------------------------------------------------------------------
 // 辅助函数
 // -------------------------------------------------------------------------
 
 // 基于 Socket 的按行读取
-static int xhttp_read_line(xsocket_t* sock, char* buf, int max_len) {
+static int xhttp_read_line(xsocket_t *sock, char *buf, int max_len) {
     int i = 0;
     while (i < max_len - 1) {
         char c;
@@ -36,13 +36,13 @@ static int xhttp_read_line(xsocket_t* sock, char* buf, int max_len) {
     return i;
 }
 
-static void xhttp_send_404(xsocket_t* sock) {
+static void xhttp_send_404(xsocket_t *sock) {
     sprintf(xhttp_send_buf, "HTTP/1.0 404 NOT FOUND\r\n\r\n");
     xsocket_write(sock, xhttp_send_buf, strlen(xhttp_send_buf));
 }
 
-static void xhttp_send_file(xsocket_t* sock, const char* url_path) {
-    FILE* file;
+static void xhttp_send_file(xsocket_t *sock, const char *url_path) {
+    FILE *file;
     uint32_t file_size;
 
     while (*url_path == '/') url_path++;
@@ -80,7 +80,7 @@ static void xhttp_send_file(xsocket_t* sock, const char* url_path) {
 // 业务逻辑
 // -------------------------------------------------------------------------
 
-static void xhttp_handle_client(xsocket_t* client) {
+static void xhttp_handle_client(xsocket_t *client) {
     // 1. 读取请求行
     if (xhttp_read_line(client, xhttp_recv_buf, sizeof(xhttp_recv_buf)) <= 0) {
         return;
@@ -92,7 +92,7 @@ static void xhttp_handle_client(xsocket_t* client) {
     }
 
     // 3. 解析路径
-    char* c = xhttp_recv_buf;
+    char *c = xhttp_recv_buf;
     while (*c != ' ') c++;
     while (*c == ' ') c++;
 
@@ -132,7 +132,7 @@ void xhttp_server_poll(void) {
     // 因为 xsocket_accept 内部有 xnet_poll() 循环，
     // 所以程序运行到这里时，会自动驱动协议栈，直到有客户端连上来。
 
-    xsocket_t* client = xsocket_accept(server_socket);
+    xsocket_t *client = xsocket_accept(server_socket);
 
     if (client) {
         // 有人连上来了！像写 Java 一样处理它

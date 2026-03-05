@@ -22,7 +22,7 @@ const xip_addr_t xnet_local_ip = XNET_CFG_DEFAULT_IP;
 /**
  * 为发包添加一个头部
  */
-void add_header(xnet_packet_t* packet, uint16_t header_size) {
+void add_header(xnet_packet_t *packet, uint16_t header_size) {
     packet->data -= header_size;
     packet->len += header_size;
 }
@@ -30,7 +30,7 @@ void add_header(xnet_packet_t* packet, uint16_t header_size) {
 /**
  * 为接收向上处理移去头部
  */
-void remove_header(xnet_packet_t* packet, uint16_t header_size) {
+void remove_header(xnet_packet_t *packet, uint16_t header_size) {
     packet->data += header_size;
     packet->len -= header_size;
 }
@@ -38,7 +38,7 @@ void remove_header(xnet_packet_t* packet, uint16_t header_size) {
 /**
  * 将包的长度截断为size大小
  */
-void truncate_packet(xnet_packet_t* packet, uint16_t new_len) {
+void truncate_packet(xnet_packet_t *packet, uint16_t new_len) {
     packet->len = min(packet->len, new_len);
 }
 
@@ -46,7 +46,7 @@ void truncate_packet(xnet_packet_t* packet, uint16_t new_len) {
  * 准备一个网络数据包用于发送数据
  * 从tx_packet的后端往前分配，预留头部空间
  */
-xnet_packet_t* xnet_alloc_tx_packet(uint16_t size) {
+xnet_packet_t *xnet_alloc_tx_packet(uint16_t size) {
     tx_packet.data = tx_packet.buffer + XNET_CFG_PACKET_MAX_SIZE - size;
     tx_packet.len = size;
     return &tx_packet;
@@ -56,7 +56,7 @@ xnet_packet_t* xnet_alloc_tx_packet(uint16_t size) {
  * 准备一个网络数据包用于读取
  * 从最开始进行分配
  */
-xnet_packet_t* xnet_alloc_rx_packet(uint16_t size) {
+xnet_packet_t *xnet_alloc_rx_packet(uint16_t size) {
     rx_packet.data = rx_packet.buffer;
     rx_packet.len = size;
     return &rx_packet;

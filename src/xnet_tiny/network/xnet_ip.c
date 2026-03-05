@@ -19,7 +19,7 @@
  * @param complement 是否对累加和的结果进行取反
  * @return 校验和结果
  */
-uint16_t checksum16(uint16_t* buf, uint16_t len, uint16_t pre_sum, int complement) {
+uint16_t checksum16(uint16_t *buf, uint16_t len, uint16_t pre_sum, int complement) {
     // 使用32位接收16位，因为要处理溢出
     uint32_t checksum = pre_sum;
     uint16_t high;
@@ -43,8 +43,8 @@ uint16_t checksum16(uint16_t* buf, uint16_t len, uint16_t pre_sum, int complemen
 }
 
 // 计算带有伪头部的校验和
-uint16_t checksum_peso(const xip_addr_t* src_ip, const xip_addr_t* dest_ip, uint8_t protocol,
-                      uint16_t* buf, uint16_t len) {
+uint16_t checksum_peso(const xip_addr_t *src_ip, const xip_addr_t *dest_ip, uint8_t protocol,
+                      uint16_t *buf, uint16_t len) {
 
     // 1. 伪头部要求：协议号前需填充 1 字节 0，以构成一个完整的 16 位字。
     uint8_t zero_protocol[] = { 0, protocol };
@@ -74,8 +74,8 @@ void xip_init(void) {
 
 }
 
-void xip_in(xnet_packet_t* packet) {
-    xip_hdr_t* ip_hdr = (xip_hdr_t*) packet->data;
+void xip_in(xnet_packet_t *packet) {
+    xip_hdr_t *ip_hdr = (xip_hdr_t*) packet->data;
 
     // 进行一些必要性的检查：版本号要求
     if (ip_hdr->version != XNET_VERSION_IPV4) {
@@ -113,8 +113,8 @@ void xip_in(xnet_packet_t* packet) {
         case XNET_PROTOCOL_UDP:
             remove_header(packet, ip_hdr_len);
             if (packet->len >= sizeof(xudp_hdr_t)) {
-                xudp_hdr_t* udp_hdr = (xudp_hdr_t*)packet->data; // 不需要手动偏移了，直接转
-                xudp_pcb_t* udp_socket = xudp_find_socket(swap_order16(udp_hdr->dest_port));
+                xudp_hdr_t *udp_hdr = (xudp_hdr_t*)packet->data; // 不需要手动偏移了，直接转
+                xudp_pcb_t *udp_socket = xudp_find_socket(swap_order16(udp_hdr->dest_port));
                 if (udp_socket) {
                     // 不需要再 remove_header 了，上面已经移除了
                     xudp_in(udp_socket, &src_ip, packet);
@@ -145,9 +145,9 @@ void xip_in(xnet_packet_t* packet) {
  * @param packet 待发送IP数据包
  * @return 发送结果
  */
-static xnet_status_t resolve_and_send(xip_addr_t* dest_ip, xnet_packet_t* packet) {
+static xnet_status_t resolve_and_send(xip_addr_t *dest_ip, xnet_packet_t *packet) {
     xnet_status_t status;
-    uint8_t* mac_addr;
+    uint8_t *mac_addr;
 
     if ((status = xarp_resolve(dest_ip, &mac_addr)) == XNET_OK) {
         return ethernet_out_to(XNET_PROTOCOL_IP, mac_addr, packet);
@@ -162,9 +162,9 @@ static xnet_status_t resolve_and_send(xip_addr_t* dest_ip, xnet_packet_t* packet
  * @param packet
  * @return
  */
-xnet_status_t xip_out(xnet_protocol_t protocol, xip_addr_t* dest_ip, xnet_packet_t* packet) {
+xnet_status_t xip_out(xnet_protocol_t protocol, xip_addr_t *dest_ip, xnet_packet_t *packet) {
     static uint32_t ip_packet_id = 0;
-    xip_hdr_t* ip_hdr;
+    xip_hdr_t *ip_hdr;
     // 添加ip头部
     add_header(packet, sizeof(xip_hdr_t));
     ip_hdr = (xip_hdr_t*)packet->data;

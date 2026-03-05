@@ -73,7 +73,7 @@ void xarp_poll(void) {
  * @param src_ip 源IP地址
  * @param mac_addr 对应的mac地址
  */
-void update_arp_entry(uint8_t* src_ip, uint8_t* mac_addr) {
+void update_arp_entry(uint8_t *src_ip, uint8_t *mac_addr) {
     memcpy(arp_entry.ipaddr.addr, src_ip, XNET_IPV4_ADDR_SIZE);
     memcpy(arp_entry.macaddr, mac_addr, XNET_MAC_ADDR_SIZE);
     arp_entry.state = XARP_ENTRY_OK;
@@ -87,7 +87,7 @@ void update_arp_entry(uint8_t* src_ip, uint8_t* mac_addr) {
  * @param gap_time 预期超时时间，值为0时，表示获取当前时间
  * @return 0 - 未超时，1-超时
  */
-int xnet_check_tmo(xnet_time_t* last_time, uint32_t gap_time) {
+int xnet_check_tmo(xnet_time_t *last_time, uint32_t gap_time) {
     xnet_time_t curr_time = xsys_get_time();
     if (gap_time == 0) {         // sec == 0 ,将 *time 设置成当前时间
         *last_time = curr_time;
@@ -107,7 +107,7 @@ int xnet_check_tmo(xnet_time_t* last_time, uint32_t gap_time) {
  * @param mac_addr 返回的mac地址存储区
  * @return XNET_ERR_OK 查找成功，XNET_ERR_NONE 查找失败
  */
-xnet_status_t xarp_resolve(const xip_addr_t* ipaddr, uint8_t** mac_addr) {
+xnet_status_t xarp_resolve(const xip_addr_t *ipaddr, uint8_t **mac_addr) {
     if ((arp_entry.state == XARP_ENTRY_OK) && xip_addr_eq(ipaddr->addr, arp_entry.ipaddr.addr)) {
         *mac_addr = arp_entry.macaddr;
         return XNET_OK;

@@ -23,9 +23,9 @@ static const uint8_t ether_broadcast_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
  * @param packet 待发送的数据包
  * @return 发送结果
  */
-xnet_status_t ethernet_out_to(xnet_protocol_t protocol, const uint8_t* target_mac_addr, xnet_packet_t* packet) {
+xnet_status_t ethernet_out_to(xnet_protocol_t protocol, const uint8_t *target_mac_addr, xnet_packet_t *packet) {
     // 添加以太网头部
-    xether_hdr_t* ether_hdr;
+    xether_hdr_t *ether_hdr;
     add_header(packet, sizeof(xether_hdr_t));
 
     // 填充头部数据
@@ -43,10 +43,10 @@ xnet_status_t ethernet_out_to(xnet_protocol_t protocol, const uint8_t* target_ma
  * @param target_ipaddr 传入目标IP，或者传自己的IP
  * @return 请求结果
  */
-xnet_status_t xarp_make_request(const xip_addr_t* target_ipaddr) {
+xnet_status_t xarp_make_request(const xip_addr_t *target_ipaddr) {
     // 准备一个发送包
-    xarp_packet_t* arp_packet;
-    xnet_packet_t* xnet_packet = xnet_alloc_tx_packet(sizeof(xarp_packet_t));
+    xarp_packet_t *arp_packet;
+    xnet_packet_t *xnet_packet = xnet_alloc_tx_packet(sizeof(xarp_packet_t));
 
     // 让 arp_packet 指向 data 首地址，配置载荷
     arp_packet = (xarp_packet_t*) xnet_packet->data;
@@ -81,9 +81,9 @@ xnet_status_t ethernet_init(void) {
  * @param arp_in_packet 接收到的ARP请求包
  * @return 生成结果
  */
-xnet_status_t xarp_make_response(uint8_t* target_ip, uint8_t* target_mac) {
-    xarp_packet_t* arp_packet;
-    xnet_packet_t* packet = xnet_alloc_tx_packet(sizeof(xarp_packet_t));
+xnet_status_t xarp_make_response(uint8_t *target_ip, uint8_t *target_mac) {
+    xarp_packet_t *arp_packet;
+    xnet_packet_t *packet = xnet_alloc_tx_packet(sizeof(xarp_packet_t));
 
     arp_packet = (xarp_packet_t*) packet->data;
     arp_packet->hardware_type = swap_order16(XARP_HW_ETHER);
@@ -103,12 +103,12 @@ xnet_status_t xarp_make_response(uint8_t* target_ip, uint8_t* target_mac) {
  * ARP输入处理
  * @param packet 输入的ARP包
  */
-void xarp_in(xnet_packet_t* packet) {
+void xarp_in(xnet_packet_t *packet) {
     // 如果小于，说明数据错误，直接忽略这个arp请求
     if (packet->len < sizeof(xarp_packet_t)) return;
 
     // 包的合法性检查
-    xarp_packet_t* arp_packet = (xarp_packet_t*) packet->data;
+    xarp_packet_t *arp_packet = (xarp_packet_t*) packet->data;
     uint16_t opcode = swap_order16(arp_packet->opcode);
     if ((swap_order16(arp_packet->hardware_type) != XARP_HW_ETHER) ||
         (arp_packet->hardware_len != XNET_MAC_ADDR_SIZE) ||
@@ -149,14 +149,14 @@ void xarp_in(xnet_packet_t* packet) {
  * 以太网数据帧输入输出
  * @param packet 待处理的包
  */
-void ethernet_in(xnet_packet_t* packet) {
+void ethernet_in(xnet_packet_t *packet) {
     // 数据至少要比以太网头部大
     if (packet->len <= sizeof(xether_hdr_t)) {
         return;
     }
 
     // 往上分解到各个协议处理
-    xether_hdr_t* ether_hdr = (xether_hdr_t*) packet->data;
+    xether_hdr_t *ether_hdr = (xether_hdr_t*) packet->data;
     // 协议类型占用两个字节，需要大小端转换
     switch (swap_order16(ether_hdr->protocol)) {
         case XNET_PROTOCOL_ARP:
@@ -165,7 +165,7 @@ void ethernet_in(xnet_packet_t* packet) {
             break;
         case XNET_PROTOCOL_IP: {
             // 避免客户端第一次发送请求没有响应
-            xip_hdr_t* ip_hdr = (xip_hdr_t*)(packet->data + sizeof(xether_hdr_t));
+            xip_hdr_t *ip_hdr = (xip_hdr_t*)(packet->data + sizeof(xether_hdr_t));
             update_arp_entry(ip_hdr->src_ip, ether_hdr->src);
             remove_header(packet, sizeof(xether_hdr_t));
             xip_in(packet);
@@ -178,7 +178,7 @@ void ethernet_in(xnet_packet_t* packet) {
  * 查询网络接口，看看是否有数据包，有则进行处理
  */
 void ethernet_poll(void) {
-    xnet_packet_t* packet;
+    xnet_packet_t *packet;
     // 此处使用二级指针，给packet赋值
     if (xnet_driver_read(&packet) == XNET_OK) {
         // 只要轮询到了数据，就会进入这里

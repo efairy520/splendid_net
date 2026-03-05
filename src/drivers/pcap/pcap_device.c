@@ -12,8 +12,8 @@
 
 #pragma comment(lib, "ws2_32.lib")  // 仅保留 win32 的网络库链接，pcap 的库链接已移至 CMake
 
-static const char* read_num(const char* str, int * num) {
-    const char* pstr = str;
+static const char *read_num(const char *str, int *num) {
+    const char *pstr = str;
 
     while ((*pstr < '0') || (*pstr > '9')) {
         if (*pstr == '\0') {
@@ -53,7 +53,7 @@ static int load_pcap_lib() {
     // 因此我们不需要再设置 SetDllDirectory 或检查 C:\Windows\System32\Npcap 路径。
 
     // 检查版本号，要求必须比工程所用的高
-    const char * v_str = pcap_lib_version();
+    const char *v_str = pcap_lib_version();
 
     // 如果 pcap_lib_version() 返回空或解析失败，说明 DLL 加载有问题（但由于 CMake 复制，此情况应较少发生）
     if (!v_str) {
@@ -105,11 +105,11 @@ static int load_pcap_lib() {
  * @param ip 物理网卡或者由虚拟软件生成的虚拟刚卡, 字符串形式，如"192.168.1.1"
  * @param name_buf 找到的对应网卡名称
  */
-static int pcap_find_device(const char* ip, char* name_buf) {
+static int pcap_find_device(const char *ip, char *name_buf) {
     char err_buf[PCAP_ERRBUF_SIZE];
-    pcap_if_t* pcap_if_list = NULL;
+    pcap_if_t *pcap_if_list = NULL;
     struct in_addr dest_ip;
-    pcap_if_t* item;
+    pcap_if_t *item;
 
     inet_pton(AF_INET, ip, &dest_ip);
 
@@ -124,9 +124,9 @@ static int pcap_find_device(const char* ip, char* name_buf) {
             continue;
         }
 
-        for (struct pcap_addr* pcap_addr = item->addresses; pcap_addr != NULL; pcap_addr = pcap_addr->next) {
-            struct sockaddr_in* curr_addr;
-            struct sockaddr* sock_addr = pcap_addr->addr;
+        for (struct pcap_addr *pcap_addr = item->addresses; pcap_addr != NULL; pcap_addr = pcap_addr->next) {
+            struct sockaddr_in *curr_addr;
+            struct sockaddr *sock_addr = pcap_addr->addr;
 
             if (sock_addr->sa_family != AF_INET) {
                 continue;
@@ -150,7 +150,7 @@ static int pcap_find_device(const char* ip, char* name_buf) {
  */
 static int pcap_show_list(void) {
     char err_buf[PCAP_ERRBUF_SIZE];
-    pcap_if_t* pcapif_list = NULL;
+    pcap_if_t *pcapif_list = NULL;
     int count = 0;
 
     // 查找所有的网络接口
@@ -164,16 +164,16 @@ static int pcap_show_list(void) {
     printf("pcap_show_list: card list\n");
 
     // 遍历所有的可用接口，输出其信息
-    for (pcap_if_t* item = pcapif_list; item != NULL; item = item->next) {
+    for (pcap_if_t *item = pcapif_list; item != NULL; item = item->next) {
         if (item->addresses == NULL) {
             continue;
         }
 
-        for (struct pcap_addr* pcap_addr = item->addresses; pcap_addr != NULL; pcap_addr = pcap_addr->next) {
+        for (struct pcap_addr *pcap_addr = item->addresses; pcap_addr != NULL; pcap_addr = pcap_addr->next) {
             char str[INET_ADDRSTRLEN];
-            struct sockaddr_in* ip_addr;
+            struct sockaddr_in *ip_addr;
 
-            struct sockaddr* sockaddr = pcap_addr->addr;
+            struct sockaddr *sockaddr = pcap_addr->addr;
             if (sockaddr->sa_family != AF_INET) {
                 continue;
             }
@@ -203,14 +203,14 @@ static int pcap_show_list(void) {
  * @param ip 打开网卡的指定ip
  * @param 给网卡设置mac
  */
-pcap_t* pcap_device_open(const char* ip, const uint8_t * mac_addr, uint8_t poll_mode) {
+pcap_t *pcap_device_open(const char *ip, const uint8_t *mac_addr, uint8_t poll_mode) {
     char err_buf[PCAP_ERRBUF_SIZE];
     struct bpf_program fp;
     bpf_u_int32 mask;
     bpf_u_int32 net;
     char filter_exp[256];
     char name_buf[256];
-    pcap_t* pcap;
+    pcap_t *pcap;
 
     if (load_pcap_lib() < 0) {
         fprintf(stderr, "pcap_open: load pcap dll failed! install it first\n");
@@ -302,7 +302,7 @@ pcap_t* pcap_device_open(const char* ip, const uint8_t * mac_addr, uint8_t poll_
 /**
  * 关闭Pcapif接口
  */
-void pcap_device_close(pcap_t* pcap) {
+void pcap_device_close(pcap_t *pcap) {
     if (pcap == (pcap_t *)0) {
         fprintf(stderr, "pcap = 0");
         pcap_show_list();
@@ -314,7 +314,7 @@ void pcap_device_close(pcap_t* pcap) {
 /**
  * 向网络接口发送数据包
  */
-uint32_t pcap_device_send(pcap_t* pcap, const uint8_t* buffer, uint32_t length) {
+uint32_t pcap_device_send(pcap_t *pcap, const uint8_t *buffer, uint32_t length) {
     if (pcap_sendpacket(pcap, buffer, length) == -1) {
         fprintf(stderr, "pcap send: send packet failed!:%s\n", pcap_geterr(pcap));
         fprintf(stderr, "pcap send: pcaket size %d\n", length);
@@ -327,10 +327,10 @@ uint32_t pcap_device_send(pcap_t* pcap, const uint8_t* buffer, uint32_t length) 
 /**
  * 从网络接口读取数据包
  */
-uint32_t pcap_device_read(pcap_t* pcap, uint8_t* buffer, uint32_t length) {
+uint32_t pcap_device_read(pcap_t *pcap, uint8_t *buffer, uint32_t length) {
     int err;
-    struct pcap_pkthdr* pkthdr;
-    const uint8_t* pkt_data;
+    struct pcap_pkthdr *pkthdr;
+    const uint8_t *pkt_data;
 
     err = pcap_next_ex(pcap, &pkthdr, &pkt_data);
     if (err == 0) {

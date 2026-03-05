@@ -276,16 +276,16 @@ static inline u8 SPI2_ReadWriteByte(u8 TxData)
 void ENC28J60_Reset(void);
 u8 ENC28J60_Read_Op(u8 op,u8 addr);
 void ENC28J60_Write_Op(u8 op,u8 addr,u8 data);
-void ENC28J60_Read_Buf(u32 len,u8* data);
-void ENC28J60_Write_Buf(u32 len,u8* data);
+void ENC28J60_Read_Buf(u32 len,u8 *data);
+void ENC28J60_Write_Buf(u32 len,u8 *data);
 void ENC28J60_Set_Bank(u8 bank);
 u8 ENC28J60_Read(u8 addr);
 void ENC28J60_Write(u8 addr,u8 data);
 void ENC28J60_PHY_Write(u8 addr,u32 data);
-u8 ENC28J60_Init(u8* macaddr);
+u8 ENC28J60_Init(u8 *macaddr);
 u8 ENC28J60_Get_EREVID(void);
-void ENC28J60_Packet_Send(u32 len,u8* packet);
-u32 ENC28J60_Packet_Receive(u32 maxlen,u8* packet);  
+void ENC28J60_Packet_Send(u32 len,u8 *packet);
+u32 ENC28J60_Packet_Receive(u32 maxlen,u8 *packet);
 
 extern int NextPacketPtr;
 

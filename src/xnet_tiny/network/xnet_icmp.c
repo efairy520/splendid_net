@@ -12,12 +12,12 @@ void xicmp_init(void) {
 }
 
 // 正常响应ICMP请求
-static xnet_status_t reply_icmp_request(xicmp_hdr_t* icmp_hdr, xip_addr_t* src_ip, xnet_packet_t* packet) {
+static xnet_status_t reply_icmp_request(xicmp_hdr_t *icmp_hdr, xip_addr_t *src_ip, xnet_packet_t *packet) {
     // 构建ICMP回复包
-    xnet_packet_t* reply_packet = xnet_alloc_tx_packet(packet->len);
+    xnet_packet_t *reply_packet = xnet_alloc_tx_packet(packet->len);
 
     // 构建ICMP回复包头
-    xicmp_hdr_t* reply_hdr = (xicmp_hdr_t*)reply_packet->data;
+    xicmp_hdr_t *reply_hdr = (xicmp_hdr_t*)reply_packet->data;
     reply_hdr->type = XICMP_CODE_ECHO_REPLY;
     reply_hdr->code = 0;
     reply_hdr->id = icmp_hdr->id;
@@ -37,7 +37,7 @@ static xnet_status_t reply_icmp_request(xicmp_hdr_t* icmp_hdr, xip_addr_t* src_i
 
 }
 
-void xicmp_in(xip_addr_t* src_ip, xnet_packet_t* packet) {
+void xicmp_in(xip_addr_t *src_ip, xnet_packet_t *packet) {
     xicmp_hdr_t *icmp_hdr = (xicmp_hdr_t *)packet->data;
 
     if (packet->len >= sizeof(xicmp_hdr_t) && (icmp_hdr->type == XICMP_CODE_ECHO_REQUEST)) {
@@ -46,9 +46,9 @@ void xicmp_in(xip_addr_t* src_ip, xnet_packet_t* packet) {
 }
 
 // 异常响应ICMP请求
-xnet_status_t xicmp_dest_unreach(uint8_t code, xip_hdr_t* ip_hdr) {
-    xnet_packet_t* packet;
-    xicmp_hdr_t* icmp_hdr;
+xnet_status_t xicmp_dest_unreach(uint8_t code, xip_hdr_t *ip_hdr) {
+    xnet_packet_t *packet;
+    xicmp_hdr_t *icmp_hdr;
     xip_addr_t dest_ip;
 
     uint16_t ip_hdr_size = ip_hdr->hdr_len * 4;
