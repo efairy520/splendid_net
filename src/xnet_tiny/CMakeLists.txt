@@ -7,9 +7,9 @@ set(TINY_SRCS
 
         # 链路层
         link/xnet_ethernet.c
+        link/xnet_arp.c
 
         # 网络层
-        network/xnet_arp.c
         network/xnet_ip.c
         network/xnet_icmp.c
 
