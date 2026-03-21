@@ -99,26 +99,27 @@ int dpdk_device_send(const void *data, uint16_t len) {
     return nb_tx;
 }
 
-// 3. 接收接口 (把数据拷给调用者)
+// 3. 接收接口 (严格单包读取，杜绝丢包黑洞)
 int dpdk_device_read(void *buffer, uint16_t max_len) {
-    struct rte_mbuf *bufs[BURST_SIZE];
-    uint16_t nb_rx = rte_eth_rx_burst(port_id, 0, bufs, BURST_SIZE);
+    // 【关键修改】：每次只申请接收 1 个包，不要用 BURST_SIZE 贪多
+    struct rte_mbuf *bufs[1];
+    uint16_t nb_rx = rte_eth_rx_burst(port_id, 0, bufs, 1);
 
+    // 没收到包直接返回
     if (nb_rx == 0) return 0;
 
-    // 这里简化处理，只取第一个包
+    // 现在 nb_rx 必定是 1，安全处理这唯一的一个包
     struct rte_mbuf *m = bufs[0];
     uint16_t pkt_len = rte_pktmbuf_data_len(m);
 
+    // 防止溢出
     if (pkt_len > max_len) pkt_len = max_len;
 
-    // 拷贝数据出去
+    // 拷贝数据给协议栈
     rte_memcpy(buffer, rte_pktmbuf_mtod(m, void*), pkt_len);
 
-    // 必须释放所有收到的包
-    for (int i = 0; i < nb_rx; i++) {
-        rte_pktmbuf_free(bufs[i]);
-    }
+    // 释放这个已经被处理完的包
+    rte_pktmbuf_free(m);
 
     return pkt_len;
 }
