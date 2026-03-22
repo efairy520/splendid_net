@@ -3,11 +3,10 @@
  * 适配层：连接 xnet 协议栈 和 DPDK Driver
  */
 #include "xnet_tiny.h"
-#include "xnet_driver.h"
 #include "dpdk_device.h" // 只依赖我们自己定义的头文件
 #include <time.h>        // clock_gettime
 
-xnet_status_t xnet_driver_open(uint8_t* mac_addr) {
+xnet_status_t xnet_netif_open(uint8_t* mac_addr) {
     printf(">> [System Info] Initializing Driver: Linux DPDK\n");
     // 1. 调用底层驱动初始化
     if (dpdk_device_init() != DPDK_OK) {
@@ -19,7 +18,7 @@ xnet_status_t xnet_driver_open(uint8_t* mac_addr) {
     return XNET_OK;
 }
 
-xnet_status_t xnet_driver_send(xnet_packet_t* packet) {
+xnet_status_t xnet_netif_send(xnet_packet_t* packet) {
     // 直接把协议栈的数据透传给驱动
     int ret = dpdk_device_send(packet->data, packet->len);
     if (ret > 0) {
@@ -28,7 +27,7 @@ xnet_status_t xnet_driver_send(xnet_packet_t* packet) {
     return XNET_ERR_IO;
 }
 
-xnet_status_t xnet_driver_read(xnet_packet_t** packet) {
+xnet_status_t xnet_netif_read(xnet_packet_t** packet) {
     // 临时缓冲区，用于接收底层数据
     // 1514 是以太网最大帧长
     static uint8_t rx_buffer[1514];

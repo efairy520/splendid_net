@@ -23,7 +23,7 @@ target_include_directories(xnet_socket
 # 这样 xsocket.c 里的 xtcp_send 等函数才能找到实现
 target_link_libraries(xnet_socket PRIVATE
         xnet_tiny   # 协议栈核心
-        xnet_port   # 适配层 (它会自动带入 driver_pcap 或 driver_dpdk)
+        xnet_netif   # 适配层 (它会自动带入 driver_pcap 或 driver_dpdk)
 )
 
 # =======================================================
