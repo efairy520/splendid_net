@@ -68,7 +68,12 @@ void tap_device_get_mac(uint8_t *mac_buf) {
 
     strncpy(ifr.ifr_name, tap_name, IFNAMSIZ);
     if (ioctl(sock, SIOCGIFHWADDR, &ifr) == 0) {
-        memcpy(mac_buf, ifr.ifr_hwaddr.sa_data, 6);
+        mac_buf[0] = 0x02;
+        mac_buf[1] = 0x00;
+        mac_buf[2] = 0x00;
+        mac_buf[3] = 0x00;
+        mac_buf[4] = 0x00;
+        mac_buf[5] = 0x01;
     }
     close(sock);
 }

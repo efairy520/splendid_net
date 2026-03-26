@@ -36,7 +36,6 @@ message(STATUS "========== 🚀 XNET TARGET ENV: ${XNET_ENV} ==========")
 
 if(XNET_ENV STREQUAL "windows")
     # --- Windows Npcap 配置 ---
-    set(ENV_LOCAL_IP "192, 168, 254, 2")
     set(NPCAP_SDK_DIR "C:/Users/efair/Downloads/npcap-sdk-1.15")
 
     add_library(Npcap::SDK UNKNOWN IMPORTED)
@@ -51,7 +50,6 @@ if(XNET_ENV STREQUAL "windows")
 
 elseif(XNET_ENV STREQUAL "ubuntu")
     # --- Linux DPDK 配置 ---
-    set(ENV_LOCAL_IP "192, 168, 56, 200")
 
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(DPDK REQUIRED libdpdk)
@@ -72,7 +70,6 @@ elseif(XNET_ENV STREQUAL "ubuntu")
 
 elseif(XNET_ENV STREQUAL "debian")
     # --- Linux TAP 配置 ---
-    set(ENV_LOCAL_IP "192, 168, 66, 201")
 
     # TAP 驱动不需要外挂第三方库，直接使用 Linux 内核 API
     set(DRIVER_TARGET "")
@@ -81,9 +78,6 @@ elseif(XNET_ENV STREQUAL "debian")
 else()
     message(FATAL_ERROR "不支持的环境变量 XNET_ENV=${XNET_ENV}，请使用 windows, ubuntu 或 debian")
 endif()
-
-# 🌟 全局注入本地 IP 宏，代码里直接用 XNET_CFG_LOCAL_IP 读取
-add_compile_definitions(XNET_CFG_LOCAL_IP=${ENV_LOCAL_IP})
 
 # =======================================================
 # 3. 注册协议栈核心模块

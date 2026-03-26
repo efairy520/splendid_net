@@ -27,7 +27,6 @@ void xudp_in(xudp_pcb_t *socket, xip_addr_t *src_ip, xnet_packet_t *packet)
     // 2. 校验和
     pre_checksum = udp_hdr->checksum;
     udp_hdr->checksum = 0;
-    extern int hw_csum_offload;
     // 3. UDP 校验和 可选，只有不为 0 时才需要验证
     if (pre_checksum != 0) {
         // 使用伪头部 (Pseudo-Header) 机制计算校验和，参数包括源IP、本地IP、协议类型、数据指针和长度
@@ -36,7 +35,7 @@ void xudp_in(xudp_pcb_t *socket, xip_addr_t *src_ip, xnet_packet_t *packet)
 
         // 协议规定：如果计算结果为 0，则必须用 0xFFFF 表示（因为 0 代表未启用校验和）
         checksum = (checksum == 0) ? 0xFFFF : checksum;
-
+        extern int hw_csum_offload;
         // 比较计算结果和原始校验和
         if (!hw_csum_offload && checksum != pre_checksum) {
             return; // 校验和验证失败，丢弃数据包

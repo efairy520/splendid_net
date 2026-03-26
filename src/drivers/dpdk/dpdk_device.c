@@ -15,7 +15,7 @@
 
 static uint16_t port_id = 0;
 static struct rte_mempool *mbuf_pool = NULL;
-int hw_csum_offload = 0;
+extern int hw_csum_offload;
 
 // 你的硬编码 MAC 地址
 const char default_mac_addr[] = {0x00, 0x0c, 0x29, 0xc5, 0xec, 0x62};

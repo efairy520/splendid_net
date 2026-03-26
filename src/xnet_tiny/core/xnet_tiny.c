@@ -15,16 +15,11 @@
 // 接收与发送缓冲区 (整个协议栈的核心静态资源)
 static xnet_packet_t tx_packet, rx_packet;
 
-// 提供一个默认兜底方案，防止宏没传进来导致编译报错
-#ifndef XNET_CFG_LOCAL_IP
-    #define XNET_CFG_LOCAL_IP 127, 0, 0, 1
-#endif
-
-// 协议栈的IP地址
-xip_addr_t xnet_local_ip = {{XNET_CFG_LOCAL_IP}};
-// 新增掩码和网关 (暂时给个默认值，后续由 DHCP 覆盖)
-xip_addr_t xnet_netmask  = {{255, 255, 255, 0}};
+// 全局网络配置 (等待DHCP获取)
+xip_addr_t xnet_local_ip = {{0, 0, 0, 0}};
+xip_addr_t xnet_netmask  = {{0, 0, 0, 0}};
 xip_addr_t xnet_gateway  = {{0, 0, 0, 0}};
+int hw_csum_offload = 0;
 
 /**
  * 为发包添加一个头部

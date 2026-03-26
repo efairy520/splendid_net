@@ -16,7 +16,7 @@ static pcap_t* pcap;
  */
 #ifdef _WIN32
     // Windows 主机 IP
-    const char *ip_str = "192.168.254.1";
+    const char *ip_str = "192.168.189.1";
 #else
     // Linux 主机没有 IP，56网卡被DPDK独占（下面的属性不使用）
     const char *ip_str = "192.168.56.200";
