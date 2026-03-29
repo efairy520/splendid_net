@@ -33,7 +33,8 @@ static void ethernet_in(xnet_packet_t *packet) {
     // 往上分解到各个协议处理
     xether_hdr_t *ether_hdr = (xether_hdr_t*) packet->data;
     // 协议类型占用两个字节，需要大小端转换
-    switch (swap_order16(ether_hdr->protocol)) {
+    uint16_t protocol = swap_order16(ether_hdr->protocol);
+    switch (protocol) {
         case XNET_PROTOCOL_ARP:
             remove_header(packet, sizeof(xether_hdr_t));
             xarp_in(packet);

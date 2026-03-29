@@ -104,21 +104,21 @@ static void update_arp_entry(uint8_t *src_ip, uint8_t *mac_addr) {
  * @return 生成结果
  */
 static xnet_status_t xarp_make_response(uint8_t *target_ip, uint8_t *target_mac) {
-    xarp_hdr_t *arp_packet;
-    xnet_packet_t *packet = xnet_alloc_tx_packet(sizeof(xarp_hdr_t));
+    xarp_hdr_t *arp_hdr;
+    xnet_packet_t *tx_packet = xnet_alloc_tx_packet(sizeof(xarp_hdr_t));
 
-    arp_packet = (xarp_hdr_t*) packet->data;
-    arp_packet->hardware_type = swap_order16(XARP_HW_ETHER);
-    arp_packet->protocol_type = swap_order16(XNET_PROTOCOL_IP);
-    arp_packet->hardware_len = XNET_MAC_ADDR_SIZE;
-    arp_packet->protocol_len = XNET_IPV4_ADDR_SIZE;
-    arp_packet->opcode = swap_order16(XARP_REPLY);
-    memcpy(arp_packet->sender_mac, xnet_local_mac, XNET_MAC_ADDR_SIZE);
-    memcpy(arp_packet->sender_ip, xnet_local_ip.addr, XNET_IPV4_ADDR_SIZE);
-    memcpy(arp_packet->target_mac, target_mac, XNET_MAC_ADDR_SIZE);
-    memcpy(arp_packet->target_ip, target_ip, XNET_IPV4_ADDR_SIZE);
+    arp_hdr = (xarp_hdr_t*) tx_packet->data;
+    arp_hdr->hardware_type = swap_order16(XARP_HW_ETHER);
+    arp_hdr->protocol_type = swap_order16(XNET_PROTOCOL_IP);
+    arp_hdr->hardware_len = XNET_MAC_ADDR_SIZE;
+    arp_hdr->protocol_len = XNET_IPV4_ADDR_SIZE;
+    arp_hdr->opcode = swap_order16(XARP_REPLY);
+    memcpy(arp_hdr->sender_mac, xnet_local_mac, XNET_MAC_ADDR_SIZE);
+    memcpy(arp_hdr->sender_ip, xnet_local_ip.addr, XNET_IPV4_ADDR_SIZE);
+    memcpy(arp_hdr->target_mac, target_mac, XNET_MAC_ADDR_SIZE);
+    memcpy(arp_hdr->target_ip, target_ip, XNET_IPV4_ADDR_SIZE);
     // 发送ARP响应，单播
-    return ethernet_out_to(XNET_PROTOCOL_ARP, target_mac, packet);
+    return ethernet_out_to(XNET_PROTOCOL_ARP, target_mac, tx_packet);
 }
 
 void xarp_init(void) {
