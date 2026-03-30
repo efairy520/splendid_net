@@ -87,17 +87,14 @@ void xnet_poll(void) {
     xarp_poll();
 }
 
-// 全局通用的超时检测工具
-int xnet_check_tmo(xnet_time_t *last_time, uint32_t gap_time) {
-    xnet_time_t curr_time = xsys_get_time(); // 调用底层提供的契约函数
+void xnet_time_record(xnet_time_t *record_time) {
+    *record_time = xsys_get_time();
+}
 
-    if (gap_time == 0) {
-        *last_time = curr_time;
-        return 0;
-    }
-
-    if (curr_time - *last_time >= gap_time) {
-        *last_time = curr_time;
+int xnet_time_check_tmo(xnet_time_t *last_time, uint32_t period) {
+    xnet_time_t now = xsys_get_time();
+    if (now - *last_time >= period) {
+        *last_time = now; // 超时后自动更新基准时间，方便下一次轮询
         return 1;
     }
     return 0;

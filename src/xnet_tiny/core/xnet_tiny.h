@@ -46,12 +46,10 @@ xnet_time_t xsys_get_time(void);
 
 void xsys_init(void);
 
-/**
- * @brief 检查是否超时 (协议栈全局通用)
- * @param last_time 记录上次时间的变量指针
- * @param gap_time 预期超时时间。传 0 表示仅刷新 last_time 为当前时间
- * @return 0 - 未超时，1 - 已超时
- */
-int xnet_check_tmo(xnet_time_t *last_time, uint32_t gap_time);
+// 记录当前时间
+void xnet_time_record(xnet_time_t *record_time);
+
+// 检查是否超时
+int xnet_time_check_tmo(xnet_time_t *last_time, uint32_t period);
 
 #endif // XNET_TINY_H

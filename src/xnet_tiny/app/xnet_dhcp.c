@@ -231,14 +231,14 @@ void xnet_dhcp_poll(void) {
             // TODO: 检查是否收到了 Offer 包
 
             // 简单的超时机制：如果 3 秒都没人理我，重新回到 INIT 状态发广播
-            if (xnet_check_tmo(&dhcp_timer, 3)) {
+            if (xnet_time_check_tmo(&dhcp_timer, 3)) {
                 printf(">> [DHCP] Timeout! No Offer received. Retrying...\n");
                 dhcp_state = DHCP_STATE_INIT;
             }
             break;
 
         case DHCP_STATE_WAITING_ACK:
-            if (xnet_check_tmo(&dhcp_timer, 3)) { // 如果发了 Request 但服务器没给 ACK
+            if (xnet_time_check_tmo(&dhcp_timer, 3)) { // 如果发了 Request 但服务器没给 ACK
                 printf(">> [DHCP] Timeout waiting for ACK. Retrying...\n");
                 dhcp_state = DHCP_STATE_INIT;
             }
