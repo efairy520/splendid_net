@@ -117,21 +117,14 @@ void xip_in(xnet_packet_t *packet) {
         !xip_addr_eq(ip_hdr->dest_ip, broadcast_ip)) {
         return;
     }
-    xip_addr_t src_ip;
+    // 提取 src_ip 和 dest_ip（UDP算伪首部校验和需要用到 dest_ip）
+    xip_addr_t src_ip, dest_ip;
     memcpy(src_ip.addr, ip_hdr->src_ip, XNET_IPV4_ADDR_SIZE);
+    memcpy(dest_ip.addr, ip_hdr->dest_ip, XNET_IPV4_ADDR_SIZE);
     switch(ip_hdr->protocol) {
         case XNET_PROTOCOL_UDP:
             remove_header(packet, ip_hdr_len);
-            if (packet->len >= sizeof(xudp_hdr_t)) {
-                xudp_hdr_t *udp_hdr = (xudp_hdr_t*)packet->data; // 不需要手动偏移了，直接转
-                xudp_pcb_t *udp_socket = xudp_find_socket(swap_order16(udp_hdr->dest_port));
-                if (udp_socket) {
-                    // 不需要再 remove_header 了，上面已经移除了
-                    xudp_in(udp_socket, &src_ip, packet);
-                } else {
-                    xicmp_dest_unreach(XICMP_CODE_PORT_UNREACH, ip_hdr);
-                }
-            }// else { 包太短连 UDP 头都不全，直接丢弃，不回 ICMP }
+            xudp_in(packet, &src_ip, &dest_ip, ip_hdr);
             break;
         case XNET_PROTOCOL_TCP:
             remove_header(packet, ip_hdr_len);

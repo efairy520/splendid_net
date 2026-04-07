@@ -3,17 +3,47 @@
 //
 
 #include "xnet_udp.h"
-
+#include "xnet_icmp.h"
 #include "xnet_ip.h"
 #include <string.h>
 
+// 控制块，不需要发送到网络，可以padding
+struct _xudp_pcb_t {
+    enum {
+        XUDP_STATE_FREE,
+        XUDP_STATE_USED,
+    } state;
+
+    uint16_t local_port;
+    xudp_handler_t handler;
+};
+
+#pragma pack(1)
+// UDP头部，需发送到网络，禁用padding
+typedef struct _xudp_hdr_t {
+    uint16_t src_port;
+    uint16_t dest_port;
+    uint16_t total_len;
+    uint16_t checksum;
+} xudp_hdr_t;
+#pragma pack()
+
 static xudp_pcb_t udp_socket_pool[XUDP_MAX_SOCKET_COUNT];
+
+static xudp_pcb_t *xudp_find_socket(uint16_t port) {
+    for (xudp_pcb_t *curr = udp_socket_pool; curr < &udp_socket_pool[XUDP_MAX_SOCKET_COUNT]; curr++) {
+        if (curr->state == XUDP_STATE_USED && curr->local_port == port) {
+            return curr;
+        }
+    }
+    return NULL;
+}
 
 void xudp_init(void) {
     memset(udp_socket_pool, 0, sizeof(udp_socket_pool));
 }
 
-void xudp_in(xudp_pcb_t *socket, xip_addr_t *src_ip, xnet_packet_t *packet)
+void xudp_in(xnet_packet_t *packet, xip_addr_t *src_ip, xip_addr_t *dest_ip, xip_hdr_t *ip_hdr)
 {
     xudp_hdr_t *udp_hdr = (xudp_hdr_t*) packet->data;
     uint16_t pre_checksum;
@@ -30,16 +60,29 @@ void xudp_in(xudp_pcb_t *socket, xip_addr_t *src_ip, xnet_packet_t *packet)
     // 3. UDP 校验和 可选，只有不为 0 时才需要验证
     if (pre_checksum != 0) {
         // 使用伪头部 (Pseudo-Header) 机制计算校验和，参数包括源IP、本地IP、协议类型、数据指针和长度
-        uint16_t checksum = checksum_peso(src_ip, &xnet_local_ip, XNET_PROTOCOL_UDP,
+        uint16_t checksum = checksum_peso(src_ip, dest_ip, XNET_PROTOCOL_UDP,
                                           (uint16_t *)udp_hdr, swap_order16(udp_hdr->total_len));
 
         // 协议规定：如果计算结果为 0，则必须用 0xFFFF 表示（因为 0 代表未启用校验和）
         checksum = (checksum == 0) ? 0xFFFF : checksum;
+        // 恢复校验和
+        udp_hdr->checksum = pre_checksum;
         extern int xnet_cfg_hw_csum;
         // 比较计算结果和原始校验和
         if (!xnet_cfg_hw_csum && checksum != pre_checksum) {
             return; // 校验和验证失败，丢弃数据包
         }
+    }
+
+    // 💡 新增逻辑：UDP 层自己负责找 Socket！
+    uint16_t dest_port = swap_order16(udp_hdr->dest_port);
+    xudp_pcb_t *socket = xudp_find_socket(dest_port);
+
+    if (socket == NULL) {
+        // 🚀 终极联动：呼叫 ICMP 发送端口不可达！
+        xicmp_dest_unreach(XICMP_CODE_PORT_UNREACH, ip_hdr);
+        // 如果找不到对应的端口，说明没人监听这个端口，暂时先丢弃数据包
+        return;
     }
 
     // 4. 处理数据包
@@ -88,15 +131,6 @@ xudp_pcb_t *xudp_alloc_socket(xudp_handler_t handler) {
 
 void xudp_free_socket(xudp_pcb_t *socket) {
     socket->state = XUDP_STATE_FREE;
-}
-
-xudp_pcb_t *xudp_find_socket(uint16_t port) {
-    for (xudp_pcb_t *curr = udp_socket_pool; curr < &udp_socket_pool[XUDP_MAX_SOCKET_COUNT]; curr++) {
-        if (curr->state == XUDP_STATE_USED && curr->local_port == port) {
-            return curr;
-        }
-    }
-    return NULL;
 }
 
 xnet_status_t xudp_bind_socket(xudp_pcb_t *socket, uint16_t port) {
