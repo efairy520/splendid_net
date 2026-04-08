@@ -40,14 +40,14 @@ int main (void) {
     printf("xnet stack initialized.\n");
 
     // 3. 启动应用层服务
-    // 创建时间服务器，监听端口 13 (TCP)
+    // 3.1 创建时间服务器，监听端口 13 (UDP)
     if (xserver_datetime_create(13) == XNET_OK) {
         printf("datetime server listening on port 13...\n");
     } else {
         printf("datetime server creation failed!\n");
     }
 
-    // 创建 HTTP 服务器，监听端口 80 (TCP)
+    // 3.2 创建 HTTP 服务器，监听端口 80 (TCP)
     if (xhttp_server_create(80) == XNET_OK) {
         printf("http server listening on port 80...\n");
     } else {
