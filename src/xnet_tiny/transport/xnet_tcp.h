@@ -51,16 +51,16 @@ struct _xtcp_pcb_t {
     uint16_t               remote_mss;
     uint16_t               remote_win;
     xtcp_event_handler_t   event_cb;
-    xtcp_buf_t *tx_buf;
-    xtcp_buf_t *rx_buf;
+    xtcp_buf_t            *tx_buf;
+    xtcp_buf_t            *rx_buf;
 
     // ===== lwIP-like accept/backlog support =====
-    xtcp_pcb_t *listener;        // child -> parent listen pcb
-    xtcp_pcb_t *accept_next;     // child link node
-    xtcp_pcb_t *accept_head;     // listen accept queue head
-    xtcp_pcb_t *accept_tail;     // listen accept queue tail
-    uint8_t     backlog;         // listen backlog limit
-    uint8_t     accept_cnt;      // listen current pending
+    xtcp_pcb_t            *listener;        // child -> parent listen pcb
+    xtcp_pcb_t            *accept_next;     // child link node
+    xtcp_pcb_t            *accept_head;     // listen accept queue head
+    xtcp_pcb_t            *accept_tail;     // listen accept queue tail
+    uint8_t                backlog;         // listen backlog limit
+    uint8_t                accept_cnt;      // listen current pending
 };
 
 void xtcp_init(void);
