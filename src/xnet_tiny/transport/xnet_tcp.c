@@ -233,7 +233,7 @@ static uint16_t tcp_buf_pull(xtcp_buf_t *tcp_buf, uint8_t *dest, uint16_t len) {
 }
 
 static xnet_status_t tcp_send_reset(uint32_t remote_ack, uint16_t local_port, xip_addr_t *remote_ip, uint16_t remote_port) {
-    xnet_packet_t *packet = xnet_alloc_tx_packet(sizeof(xtcp_hdr_t));
+    xnet_packet_t *packet = xnet_prepare_tx_packet(sizeof(xtcp_hdr_t));
     xtcp_hdr_t *tcp_hdr = (xtcp_hdr_t*) packet->data;
 
     tcp_hdr->src_port = swap_order16(local_port);
@@ -287,7 +287,7 @@ static xnet_status_t tcp_send_segment(xtcp_pcb_t *pcb, uint8_t flags) {
         payload_len = 0;
     }
 
-    xnet_packet_t *packet = xnet_alloc_tx_packet(payload_len + opt_len + sizeof(xtcp_hdr_t));
+    xnet_packet_t *packet = xnet_prepare_tx_packet(payload_len + opt_len + sizeof(xtcp_hdr_t));
     xtcp_hdr_t *tcp_hdr = (xtcp_hdr_t*) packet->data;
 
     tcp_hdr->src_port = swap_order16(pcb->local_port);

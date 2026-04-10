@@ -18,10 +18,10 @@ extern uint8_t xnet_local_mac[XNET_MAC_ADDR_SIZE];
 // 1. 内存管理与包操作 (Buffer Management)
 
 // 分配一个发送包 (从后往前分配)
-xnet_packet_t *xnet_alloc_tx_packet(uint16_t size);
+xnet_packet_t *xnet_prepare_tx_packet(uint16_t size);
 
 // 分配一个读取包 (从前往后分配)
-xnet_packet_t *xnet_alloc_rx_packet(uint16_t size);
+xnet_packet_t *xnet_prepare_rx_packet(uint16_t size);
 
 // 头部操作工具
 void add_header(xnet_packet_t *packet, uint16_t header_size);

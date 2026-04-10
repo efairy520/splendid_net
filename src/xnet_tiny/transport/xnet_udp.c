@@ -112,14 +112,14 @@ xnet_status_t xudp_send_to(xudp_pcb_t *pcb, xip_addr_t *dest_ip, uint16_t dest_p
     return xip_out(XNET_PROTOCOL_UDP, dest_ip, packet);
 }
 
-xudp_pcb_t *xudp_alloc_pcb(xudp_handler_t handler) {
+xudp_pcb_t *xudp_pcb_new(xudp_handler_t handler) {
     // 1. 遍历资源池
     for (xudp_pcb_t *cur = udp_pcb_pool; cur < &udp_pcb_pool[XUDP_MAX_PCB_COUNT]; cur++) {
 
         // 2. 检查是否占用
         if (cur->state == XUDP_STATE_FREE) {
+            memset(cur, 0, sizeof(xudp_pcb_t));
             cur->state = XUDP_STATE_USED;
-            cur->local_port = 0; // 端口先置 0，表示还没绑定具体端口（稍后调用 bind）
             cur->handler = handler; // 挂载回调函数
             return cur;
         }

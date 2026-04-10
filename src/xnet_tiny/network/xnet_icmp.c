@@ -34,7 +34,7 @@ void xicmp_init(void) {
  */
 static xnet_status_t reply_icmp_request(xicmp_hdr_t *icmp_hdr, xip_addr_t *src_ip, xnet_packet_t *packet) {
     // 构建ICMP回复包
-    xnet_packet_t *reply_packet = xnet_alloc_tx_packet(packet->len);
+    xnet_packet_t *reply_packet = xnet_prepare_tx_packet(packet->len);
 
     // 构建ICMP回复包头
     xicmp_hdr_t *reply_hdr = (xicmp_hdr_t*)reply_packet->data;
@@ -73,7 +73,7 @@ xnet_status_t xicmp_dest_unreach(uint8_t code, xip_hdr_t *ip_hdr) {
     uint16_t icmp_payload_size = ip_hdr_size + min(ip_payload_size, 8);
 
     // 2. 分配新的发送包：ICMP 头部 + ICMP载荷
-    xnet_packet_t *tx_packet = xnet_alloc_tx_packet(sizeof(xicmp_hdr_t) + icmp_payload_size);
+    xnet_packet_t *tx_packet = xnet_prepare_tx_packet(sizeof(xicmp_hdr_t) + icmp_payload_size);
 
     // 3. 设置ICMP头部信息
     xicmp_hdr_t *icmp_hdr = (xicmp_hdr_t*)tx_packet->data;

@@ -36,7 +36,7 @@ static xnet_status_t on_udp_recv(xudp_pcb_t *pcb,
                                          uint16_t src_port,
                                          xnet_packet_t *packet);
 
-static xsocket_t *socket_alloc(void) {
+static xsocket_t *socket_new(void) {
     for (int i = 0; i < XSOCKET_MAX_NUM; i++) {
         if (!socket_pool[i].is_used) {
             memset(&socket_pool[i], 0, sizeof(socket_pool[i]));
@@ -59,7 +59,7 @@ XNET_EXPORT xsocket_t *xsocket_open(void) {
 }
 
 XNET_EXPORT xsocket_t *xsocket_open_ex(xsocket_type_t type) {
-    xsocket_t *s = socket_alloc();
+    xsocket_t *s = socket_new();
     if (!s) return NULL;
 
     s->type = type;
@@ -72,7 +72,7 @@ XNET_EXPORT xsocket_t *xsocket_open_ex(xsocket_type_t type) {
         }
     } else {
         // UDP：注册内部 handler，用邮箱桥接到 recvfrom
-        s->pcb.udp = xudp_alloc_pcb(on_udp_recv);
+        s->pcb.udp = xudp_pcb_new(on_udp_recv);
         if (!s->pcb.udp) {
             socket_free(s);
             return NULL;
@@ -136,7 +136,7 @@ XNET_EXPORT xsocket_t *xsocket_accept(xsocket_t *socket) {
     xtcp_pcb_t *child = xtcp_accept(socket->pcb.tcp);
     if (!child) return NULL;
 
-    xsocket_t *client = socket_alloc();
+    xsocket_t *client = socket_new();
     if (!client) {
         // 没有 wrapper 资源，只能关掉 child
         xtcp_pcb_close(child);
@@ -257,7 +257,7 @@ XNET_EXPORT int xsocket_sendto(xsocket_t *socket, const char *data, int len,
     if (!socket || socket->type != XSOCKET_TYPE_UDP || !socket->pcb.udp) return -1;
     if (!data || len <= 0 || !dest_ip || dest_port == 0) return -1;
 
-    xnet_packet_t *packet = xnet_alloc_tx_packet((uint16_t)len);
+    xnet_packet_t *packet = xnet_prepare_tx_packet((uint16_t)len);
     if (!packet) return -1;
 
     memcpy(packet->data, data, len);

@@ -105,7 +105,7 @@ static void update_arp_entry(uint8_t *src_ip, uint8_t *mac_addr) {
  */
 static xnet_status_t xarp_make_response(uint8_t *target_ip, uint8_t *target_mac) {
     xarp_hdr_t *arp_hdr;
-    xnet_packet_t *tx_packet = xnet_alloc_tx_packet(sizeof(xarp_hdr_t));
+    xnet_packet_t *tx_packet = xnet_prepare_tx_packet(sizeof(xarp_hdr_t));
 
     arp_hdr = (xarp_hdr_t*) tx_packet->data;
     arp_hdr->hardware_type = swap_order16(XARP_HW_ETHER);
@@ -210,7 +210,7 @@ xnet_status_t xarp_resolve(const xip_addr_t *ipaddr, uint8_t **mac_addr) {
 xnet_status_t xarp_make_request(const xip_addr_t *target_ipaddr) {
     // 准备一个发送包
     xarp_hdr_t *arp_hdr;
-    xnet_packet_t *tx_packet = xnet_alloc_tx_packet(sizeof(xarp_hdr_t));
+    xnet_packet_t *tx_packet = xnet_prepare_tx_packet(sizeof(xarp_hdr_t));
 
     // 让 arp_packet 指向 data 首地址，配置载荷
     arp_hdr = (xarp_hdr_t*) tx_packet->data;

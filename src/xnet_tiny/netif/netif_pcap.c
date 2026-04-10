@@ -63,7 +63,7 @@ xnet_status_t xnet_netif_send(xnet_packet_t *packet) {
  */
 xnet_status_t xnet_netif_read(xnet_packet_t **pp_packet) {
     uint16_t size;
-    xnet_packet_t *rx_packet = xnet_alloc_rx_packet(XNET_CFG_PACKET_MAX_SIZE);
+    xnet_packet_t *rx_packet = xnet_prepare_rx_packet(XNET_CFG_PACKET_MAX_SIZE);
 
     size = pcap_device_read(pcap, rx_packet->data, XNET_CFG_PACKET_MAX_SIZE);
     if (size) {

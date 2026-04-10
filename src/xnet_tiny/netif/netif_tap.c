@@ -29,7 +29,7 @@ xnet_status_t xnet_netif_read(xnet_packet_t** packet_ptr) {
     int len = tap_device_read(rx_buffer, sizeof(rx_buffer));
 
     if (len > 0) {
-        xnet_packet_t* r_packet = xnet_alloc_rx_packet(len);
+        xnet_packet_t* r_packet = xnet_prepare_rx_packet(len);
         memcpy(r_packet->data, rx_buffer, len);
         r_packet->len = len;
 

@@ -21,7 +21,7 @@ static xip_addr_t pending_offered_ip;
 // 发送 Request 确认函
 static void dhcp_send_request(void) {
     uint16_t total_len = sizeof(xnet_dhcp_hdr_t) + 64;
-    xnet_packet_t *packet = xnet_alloc_tx_packet(total_len);
+    xnet_packet_t *packet = xnet_prepare_tx_packet(total_len);
     xnet_dhcp_hdr_t *hdr = (xnet_dhcp_hdr_t *)packet->data;
     memset(hdr, 0, sizeof(xnet_dhcp_hdr_t));
 
@@ -149,7 +149,7 @@ static void dhcp_send_discover(void) {
     // 1. 申请一个数据包 (大小 = DHCP头 + 一点点 Options 的空间)
     // 注意：这里调用的是你协议栈底层的发包分配函数
     uint16_t total_len = sizeof(xnet_dhcp_hdr_t) + 4; // 先算个大概，后面调整
-    xnet_packet_t *packet = xnet_alloc_tx_packet(total_len);
+    xnet_packet_t *packet = xnet_prepare_tx_packet(total_len);
 
     // 2. 将数据区强制转换为 DHCP 头部指针，并全部清零
     xnet_dhcp_hdr_t *hdr = (xnet_dhcp_hdr_t *)packet->data;
@@ -200,7 +200,7 @@ void xnet_dhcp_init(void) {
 
     // 申请 Socket 并绑定在 68 端口
     if (dhcp_pcb == NULL) {
-        dhcp_pcb = xudp_alloc_pcb(dhcp_udp_handler);
+        dhcp_pcb = xudp_pcb_new(dhcp_udp_handler);
         if (dhcp_pcb) {
             xudp_bind_pcb(dhcp_pcb, 68);
         } else {
