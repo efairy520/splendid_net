@@ -116,11 +116,7 @@ XNET_EXPORT xnet_status_t xsocket_listen(xsocket_t *socket) {
         return XNET_ERR_STATE;
     }
 
-    xnet_status_t r = xtcp_pcb_listen(socket->pcb.tcp);
-    if (r == XNET_OK) {
-        socket->pcb.tcp->backlog = XSOCKET_BACKLOG;
-    }
-    return r;
+    return xtcp_pcb_listen(socket->pcb.tcp, XSOCKET_BACKLOG);
 }
 
 XNET_EXPORT xsocket_t *xsocket_accept(xsocket_t *socket) {

@@ -323,38 +323,6 @@ static xnet_status_t tcp_send_segment(xtcp_pcb_t *pcb, uint8_t flags) {
     return XNET_OK;
 }
 
-// 新建PCB
-static xtcp_pcb_t *tcp_pcb_new(void) {
-    for (xtcp_pcb_t *pcb = tcp_pcb_pool; pcb < &tcp_pcb_pool[XTCP_PCB_MAX_NUM]; pcb++) {
-        // 找到空闲槽位
-        if (pcb->state == XTCP_STATE_FREE) {
-
-            // A. 物理清零 (这一步连同里面的 tx_buf 和 rx_buf 实体一起全清零了！)
-            memset(pcb, 0, sizeof(xtcp_pcb_t));
-
-            // B. 状态初始化
-            pcb->state = XTCP_STATE_CLOSED;
-
-            // C. 核心组件初始化 (这是之前 accept 里经常漏写的！)
-            tcp_buf_init(&pcb->tx_buf);
-            tcp_buf_init(&pcb->rx_buf);
-
-            // D. 协议参数初始化 (出厂默认值)
-            pcb->remote_mss = XTCP_MSS_DEFAULT;
-            pcb->remote_win = XTCP_WIN_DEFAULT;
-
-            // E. 身份标识初始化 (随机序列号)
-            // 无论是主动连别人，还是被动接受，我都得有个随机的初始 Seq
-            pcb->snd_nxt = tcp_get_init_seq();
-            pcb->snd_una = pcb->snd_nxt;
-
-            // 返回这个“标准件”
-            return pcb;
-        }
-    }
-    return NULL;
-}
-
 static void tcp_pcb_free(xtcp_pcb_t *pcb) {
     if (!pcb) return;
     pcb->state = XTCP_STATE_FREE;
@@ -371,7 +339,7 @@ static void tcp_listen_input(xtcp_pcb_t *listen_pcb, xip_addr_t *remote_ip, xtcp
     }
 
     // 1. 拿一个标准件 (此时缓冲区、随机Seq都准备好了！)
-    xtcp_pcb_t *child_pcb = tcp_pcb_new();
+    xtcp_pcb_t *child_pcb = xtcp_pcb_new();
     if (!child_pcb) return;
 
     // 2. 个性化配置 (连接侧特有)
@@ -566,14 +534,36 @@ void xtcp_in(xip_addr_t *remote_ip, xnet_packet_t *packet) {
     }
 }
 
-// 2. 重构 xtcp_pcb_new (面向用户)
-// 用户的需求：我要一个 PCB，后面我会绑定端口去 Listen，或者 Connect 别人
+// 新建 TCP PCB
 xtcp_pcb_t *xtcp_pcb_new(void) {
-    // 1. 拿一个标准件
-    xtcp_pcb_t *pcb = tcp_pcb_new();
-    if (!pcb) return NULL;
-    // 2. 状态已经在 base 里设为 CLOSED 了，不用动
-    return pcb;
+    for (xtcp_pcb_t *pcb = tcp_pcb_pool; pcb < &tcp_pcb_pool[XTCP_PCB_MAX_NUM]; pcb++) {
+        // 找到空闲槽位
+        if (pcb->state == XTCP_STATE_FREE) {
+
+            // A. 物理清零 (这一步连同里面的 tx_buf 和 rx_buf 实体一起全清零了！)
+            memset(pcb, 0, sizeof(xtcp_pcb_t));
+
+            // B. 状态初始化
+            pcb->state = XTCP_STATE_CLOSED;
+
+            // C. 核心组件初始化 (这是之前 accept 里经常漏写的！)
+            tcp_buf_init(&pcb->tx_buf);
+            tcp_buf_init(&pcb->rx_buf);
+
+            // D. 协议参数初始化 (出厂默认值)
+            pcb->remote_mss = XTCP_MSS_DEFAULT;
+            pcb->remote_win = XTCP_WIN_DEFAULT;
+
+            // E. 身份标识初始化 (随机序列号)
+            // 无论是主动连别人，还是被动接受，我都得有个随机的初始 Seq
+            pcb->snd_nxt = tcp_get_init_seq();
+            pcb->snd_una = pcb->snd_nxt;
+
+            // 返回这个“标准件”
+            return pcb;
+        }
+    }
+    return NULL;
 }
 
 xnet_status_t xtcp_pcb_bind(xtcp_pcb_t *pcb, uint16_t local_port) {
@@ -627,7 +617,7 @@ xtcp_pcb_t *xtcp_pcb_find(xip_addr_t *remote_ip, uint16_t remote_port, uint16_t 
     return listen_pcb;
 }
 
-xnet_status_t xtcp_pcb_listen(xtcp_pcb_t *pcb) {
+xnet_status_t xtcp_pcb_listen(xtcp_pcb_t *pcb, uint8_t backlog) {
     if (pcb == NULL) return XNET_ERR_PARAM;
 
     if (pcb->state != XTCP_STATE_CLOSED) {
@@ -643,7 +633,7 @@ xnet_status_t xtcp_pcb_listen(xtcp_pcb_t *pcb) {
     pcb->accept_head = NULL;
     pcb->accept_tail = NULL;
     pcb->accept_cnt  = 0;
-    pcb->backlog     = 10;   // 先写死，下一步我们再跟 XSOCKET_BACKLOG 打通
+    pcb->backlog     = backlog;
 
     return XNET_OK;
 }

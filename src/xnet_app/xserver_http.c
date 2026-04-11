@@ -134,14 +134,11 @@ xnet_status_t xhttp_server_create(uint16_t port) {
 }
 
 void xhttp_server_poll(void) {
-    // [关键] 这里变成了 accept。
-    // 因为 xsocket_accept 内部有 xnet_poll() 循环，
-    // 所以程序运行到这里时，会自动驱动协议栈，直到有客户端连上来。
-
+    // 从backlog队列pop一个client
     xsocket_t *client = xsocket_accept(server_socket);
 
     if (client) {
-        // 有人连上来了！像写 Java 一样处理它
+        // 有人连上来了，就处理
         xhttp_handle_client(client);
 
         // 处理完，关闭连接

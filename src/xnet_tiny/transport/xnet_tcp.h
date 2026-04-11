@@ -79,7 +79,7 @@ void           xtcp_in(xip_addr_t *remote_ip, xnet_packet_t *packet);
 xtcp_pcb_t    *xtcp_pcb_new(void);
 xnet_status_t  xtcp_pcb_bind(xtcp_pcb_t *pcb, uint16_t local_port);
 xtcp_pcb_t    *xtcp_pcb_find(xip_addr_t *remote_ip, uint16_t remote_port, uint16_t local_port);
-xnet_status_t  xtcp_pcb_listen(xtcp_pcb_t *pcb);
+xnet_status_t  xtcp_pcb_listen(xtcp_pcb_t *pcb, uint8_t backlog);
 xnet_status_t  xtcp_pcb_close(xtcp_pcb_t *pcb);
 
 // ===== 数据收发与连接提取 =====
