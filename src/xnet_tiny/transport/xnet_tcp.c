@@ -331,10 +331,7 @@ static void tcp_pcb_free(xtcp_pcb_t *pcb) {
 }
 
 // 监听状态下的输入处理（发送第二次握手）
-static void tcp_listen_input(xtcp_pcb_t *listen_pcb, xip_addr_t *remote_ip, xtcp_hdr_t *tcp_hdr) {
-    // 安全提取标志位
-    uint16_t flags = TCP_HDR_GET_FLAGS(tcp_hdr->_hdrlen_rsvd_flags);
-
+static void tcp_listen_input(xtcp_pcb_t *listen_pcb, xip_addr_t *remote_ip, xtcp_hdr_t *tcp_hdr, uint16_t flags) {
     // 非 SYN 包直接 RST
     if (!(flags & XTCP_FLAG_SYN)) {
         tcp_send_reset(tcp_hdr->seq, listen_pcb->local_port, remote_ip, tcp_hdr->src_port);
@@ -348,10 +345,10 @@ static void tcp_listen_input(xtcp_pcb_t *listen_pcb, xip_addr_t *remote_ip, xtcp
     // 2. 个性化配置 (连接侧特有)
     // 2.1 继承“父业”
     child_pcb->local_port = listen_pcb->local_port; // 继承端口
-    child_pcb->listener = listen_pcb;   // ✅ 记录父 LISTEN pcb（S方案关键）
+    child_pcb->listener = listen_pcb;               // 记录父 LISTEN pcb
 
     // 2.2 录入“客人”信息
-    child_pcb->state = XTCP_STATE_SYN_RECVD;      // 状态跃迁
+    child_pcb->state = XTCP_STATE_SYN_RECVD;        // 状态跃迁
     child_pcb->remote_ip = *remote_ip;
     child_pcb->remote_port = tcp_hdr->src_port;
     child_pcb->remote_win = tcp_hdr->window;
@@ -374,47 +371,9 @@ void xtcp_init(void) {
     memset(tcp_pcb_pool, 0, sizeof(tcp_pcb_pool));
 }
 
-void xtcp_in(xip_addr_t *remote_ip, xnet_packet_t *packet) {
-    // 检查TCP包的长度
-    if (packet->len < sizeof(xtcp_hdr_t)) {
-        return;
-    }
-    // 检查伪校验和（校验和不需要进行大小端转换，校验和算法与顺序无关）
-    xtcp_hdr_t *tcp_hdr = (xtcp_hdr_t*) packet->data;
-    uint16_t pre_checksum = tcp_hdr->checksum;
-    tcp_hdr->checksum = 0;
-    if (pre_checksum != 0) {
-        uint16_t checksum = pseudo_checksum(remote_ip, &xnet_local_ip, XNET_PROTOCOL_TCP, (uint16_t*) tcp_hdr, packet->len);
-        checksum = (checksum == 0) ? 0xFFFF : checksum;
-        if (checksum != pre_checksum) {
-            return;
-        }
-    }
-
-    // 大小端转换
-    tcp_hdr->src_port = swap_order16(tcp_hdr->src_port);
-    tcp_hdr->dest_port = swap_order16(tcp_hdr->dest_port);
-    tcp_hdr->_hdrlen_rsvd_flags = swap_order16(tcp_hdr->_hdrlen_rsvd_flags);
-    tcp_hdr->seq = swap_order32(tcp_hdr->seq);
-    tcp_hdr->ack = swap_order32(tcp_hdr->ack);
-    tcp_hdr->window = swap_order16(tcp_hdr->window);
-
-    // 查询五元组
-    xtcp_pcb_t *pcb = xtcp_pcb_find(remote_ip, tcp_hdr->src_port, tcp_hdr->dest_port);
-    if (pcb == NULL) {
-        // 找不到pcb，说明连listen pcb都没有，没有应用程序监听目标端口
-        tcp_send_reset(tcp_hdr->seq + 1, tcp_hdr->dest_port, remote_ip, tcp_hdr->src_port);
-        return;
-    }
-
-    // pcb处于监听状态（收到第一次握手）
-    if (pcb->state == XTCP_STATE_LISTEN) {
-        // 监听状态下的输入处理（发送第二次握手）
-        tcp_listen_input(pcb, remote_ip, tcp_hdr);
-        return;
-    }
-
-    // 校验序列号
+// 专门处理“非 LISTEN”状态的活跃 TCP 状态机
+static void tcp_process(xtcp_pcb_t *pcb, xtcp_hdr_t *tcp_hdr, uint16_t flags, uint8_t *payload, uint16_t payload_len, xip_addr_t *remote_ip) {
+    // 校验序列号 (原汁原味保留你的前置拦截逻辑)
     if (tcp_hdr->seq != pcb->rcv_nxt) {
         // 场景：对方发了 1, 2。我先收到了 2。
         // 正确做法：丢弃包 2（因为我处理不了乱序），
@@ -429,18 +388,6 @@ void xtcp_in(xip_addr_t *remote_ip, xnet_packet_t *packet) {
         return;
     }
 
-    // 这里可能是第三次握手，也可能是连接已建立后的正常通信，此时tcp_hdr可能包含option数据，所以不能使用sizeof(xtcp_hdr_t)
-    uint16_t actual_hdr_len = TCP_HDR_GET_LEN(tcp_hdr->_hdrlen_rsvd_flags) * 4;
-    // 头部声称的长度不能小于基础 20 字节，也不能大于当前整个包的物理长度
-    if (actual_hdr_len < sizeof(xtcp_hdr_t) || actual_hdr_len > packet->len) {
-        return; // 非法畸形包，直接丢弃
-    }
-    remove_header(packet, actual_hdr_len);
-
-    // 使用安全宏提取标志位
-    uint16_t flags = TCP_HDR_GET_FLAGS(tcp_hdr->_hdrlen_rsvd_flags);
-    uint16_t payload_len = packet->len; // 剥离头后，这就是数据长度
-
     switch (pcb->state) {
         case XTCP_STATE_SYN_RECVD:
             if (flags & XTCP_FLAG_ACK) {
@@ -450,7 +397,7 @@ void xtcp_in(xip_addr_t *remote_ip, xnet_packet_t *packet) {
                     pcb->snd_una++;  // 确认 SYN 已被对方确认
                     pcb->state = XTCP_STATE_ESTABLISHED;
 
-                    // ✅ 入队到父 listener 的 accept 队列（而不是全局队列）
+                    // 入队到父 listener 的 accept 队列（而不是全局队列）
                     xtcp_pcb_t *listen = pcb->listener;
                     if (listen && listen->state == XTCP_STATE_LISTEN) {
                         if (listen->accept_cnt < listen->backlog) {
@@ -488,7 +435,7 @@ void xtcp_in(xip_addr_t *remote_ip, xnet_packet_t *packet) {
             // 显式处理接收到的数据
             if (payload_len > 0) {
                 // 1. 直接调用 buffer 的 put 方法 (语义清晰：放入接收缓冲)
-                int written = tcp_buf_put(&pcb->rx_buf, packet->data, payload_len);
+                int written = tcp_buf_put(&pcb->rx_buf, payload, payload_len); // [!] 这里替换成了 payload
 
                 // 2. 更新接收进度 (只加数据的长度)
                 pcb->rcv_nxt += written;
@@ -538,6 +485,66 @@ void xtcp_in(xip_addr_t *remote_ip, xnet_packet_t *packet) {
                 tcp_pcb_free(pcb);
             }
             break;
+    }
+}
+
+void xtcp_in(xip_addr_t *remote_ip, xnet_packet_t *packet) {
+    // 1. 检查TCP包的基础长度
+    if (packet->len < sizeof(xtcp_hdr_t)) {
+        return;
+    }
+
+    // 2. 检查伪校验和（校验和不需要进行大小端转换，校验和算法与顺序无关）
+    xtcp_hdr_t *tcp_hdr = (xtcp_hdr_t*) packet->data;
+    uint16_t pre_checksum = tcp_hdr->checksum;
+    tcp_hdr->checksum = 0;
+    if (pre_checksum != 0) {
+        uint16_t checksum = pseudo_checksum(remote_ip, &xnet_local_ip, XNET_PROTOCOL_TCP, (uint16_t*) tcp_hdr, packet->len);
+        checksum = (checksum == 0) ? 0xFFFF : checksum;
+        if (checksum != pre_checksum) {
+            return;
+        }
+    }
+
+    // 3. 大小端转换
+    tcp_hdr->src_port = swap_order16(tcp_hdr->src_port);
+    tcp_hdr->dest_port = swap_order16(tcp_hdr->dest_port);
+    tcp_hdr->_hdrlen_rsvd_flags = swap_order16(tcp_hdr->_hdrlen_rsvd_flags);
+    tcp_hdr->seq = swap_order32(tcp_hdr->seq);
+    tcp_hdr->ack = swap_order32(tcp_hdr->ack);
+    tcp_hdr->window = swap_order16(tcp_hdr->window);
+
+    // 全局统一“报文深度解析与安检”
+    uint16_t actual_hdr_len = TCP_HDR_GET_LEN(tcp_hdr->_hdrlen_rsvd_flags) * 4;
+
+    // 头部声称的长度不能小于基础 20 字节，也不能大于当前整个包的物理长度
+    if (actual_hdr_len < sizeof(xtcp_hdr_t) || actual_hdr_len > packet->len) {
+        return; // 非法畸形包，在所有业务之前当场击毙！
+    }
+
+    // 安全提取标志位
+    uint16_t flags = TCP_HDR_GET_FLAGS(tcp_hdr->_hdrlen_rsvd_flags);
+
+    // 剥离TCP头，获取纯数据 (注：remove_header 后，tcp_hdr 指针依然有效，只是 packet->data 前移了)
+    remove_header(packet, actual_hdr_len);
+    uint8_t *payload = packet->data;
+    uint16_t payload_len = packet->len; // 剥离头后，这就是数据长度
+
+    // 查找五元组
+    xtcp_pcb_t *pcb = xtcp_pcb_find(remote_ip, tcp_hdr->src_port, tcp_hdr->dest_port);
+    if (pcb == NULL) {
+        // 找不到pcb，说明连listen pcb都没有，没有应用程序监听目标端口
+        tcp_send_reset(tcp_hdr->seq + 1, tcp_hdr->dest_port, remote_ip, tcp_hdr->src_port);
+        return;
+    }
+
+    // 路由分发
+    if (pcb->state == XTCP_STATE_LISTEN) {
+        // 引擎 A：专门处理新连接 (收到第一次握手)
+        tcp_listen_input(pcb, remote_ip, tcp_hdr, flags);
+    } else {
+        // 引擎 B：专门处理活跃连接 (交由独立的 process 引擎处理)
+        tcp_process(pcb, tcp_hdr, flags, payload, payload_len, remote_ip);
     }
 }
 
